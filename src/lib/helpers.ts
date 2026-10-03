@@ -1,18 +1,12 @@
 import { AppState, money, quantity, Sale, today, UserRole } from "./domain"
-import { nav, Screen } from "./types"
+import type { Screen } from './types'
 
-const roleScreens: Record<UserRole, Screen[]> = {
-  owner: nav.map(item => item.key),
-  sales: ['dashboard', 'sales', 'customers', 'collections', 'reminders'],
-  warehouse: ['dashboard', 'packing', 'inventory'],
-  purchasing: ['dashboard', 'purchases', 'suppliers']
-}
 
 const statusClass = (status: string) => status === 'paid' || status === 'confirmed' || status === 'sent' ? 'green' : status === 'overdue' ? 'red' : 'yellow'
 const statusLabel = (status: string) => ({ draft: 'مسودة', confirmed: 'غير مدفوعة', partial: 'مدفوعة جزئيًا', paid: 'مدفوعة', overdue: 'متأخرة', pending: 'بانتظار الإرسال', sent: 'تم الإرسال', skipped: 'تم التخطي', cancelled: 'أُلغي' }[status] || status)
 const roleLabel = (role: UserRole) => ({ owner: 'المالك / مدير النظام', sales: 'موظف مبيعات', warehouse: 'موظف مخزن وتعبئة', purchasing: 'موظف مشتريات' }[role])
 
-const canAccess = (role: UserRole, screen: Screen) => roleScreens[role].includes(screen)
+const canAccess = (screens: Screen[] | undefined, screen: Screen) => screens?.includes(screen) ?? false
 
 const escapeHtml = (value: string | number) => String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[character] || character))
 
@@ -88,4 +82,4 @@ async function printSupplierStatement(state: AppState, supplierId: string) {
   return printHtmlDocument(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>كشف حساب ${escapeHtml(supplier.name)}</title><style>@page{size:A4;margin:14mm}*{box-sizing:border-box}body{color:#17342a;font-family:Tahoma,Arial,sans-serif;font-size:12px;margin:0}.head{align-items:flex-start;border-bottom:3px solid #12382f;display:flex;justify-content:space-between;padding-bottom:17px}.brand{display:flex;gap:10px;align-items:center}.mark{background:#12382f;border-radius:9px;color:white;font-size:24px;font-weight:700;padding:9px 14px}.brand h1{font-size:19px;margin:0 0 4px}.brand p,.meta{color:#5e7168;font-size:11px;margin:0}.meta{text-align:left;line-height:1.9}.info{background:#f3f8f5;border:1px solid #d9e8df;border-radius:8px;display:flex;gap:45px;margin:20px 0;padding:14px}.info span{color:#667a70;display:block;font-size:10px;margin-bottom:4px}table{border-collapse:collapse;width:100%}th{background:#edf5f0;color:#315749;font-size:10px;padding:9px;text-align:right}td{border-bottom:1px solid #e4ece7;padding:9px}.summary{background:#12382f;border-radius:8px;color:white;display:flex;justify-content:space-between;margin-top:22px;padding:14px}.summary span{color:#d9eadf;font-size:11px}.footer{border-top:1px solid #dce6e1;color:#65776e;display:flex;font-size:10px;justify-content:space-between;margin-top:45px;padding-top:14px}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><header class="head"><div class="brand"><div class="mark">م</div><div><h1>${escapeHtml(state.settings.companyName)}</h1><p>كشف حساب مورد</p></div></div><div class="meta"><b>رقم المرجع: SUP-${escapeHtml(today().replace(/-/g, ''))}</b><br>تاريخ الإصدار: ${escapeHtml(today())}</div></header><section class="info"><div><span>المورد</span><b>${escapeHtml(supplier.name)}</b></div><div><span>الهاتف</span><b>${escapeHtml(supplier.phone || '—')}</b></div></section><table><thead><tr><th>التاريخ</th><th>نوع الحركة</th><th>المرجع</th><th>البيان</th><th>مدين</th><th>دائن</th><th>الرصيد المستحق</th></tr></thead><tbody>${rows || '<tr><td colspan="7">لا توجد حركات مالية.</td></tr>'}</tbody></table><section class="summary"><div><span>إجمالي التوريدات</span><b>${escapeHtml(money(entries.reduce((sum, entry) => sum + entry.debit, 0)))}</b></div><div><span>إجمالي المدفوع</span><b>${escapeHtml(money(entries.reduce((sum, entry) => sum + entry.credit, 0)))}</b></div><div><span>الرصيد المستحق للمورد</span><b>${escapeHtml(money(supplier.balance))}</b></div></section><footer class="footer"><span>كشف حساب صادر من نظام مدير التعبئة</span><span>اعتماد الحسابات: __________________</span></footer></body></html>`)
 }
 
-export { roleScreens, printCustomerStatement, exportCustomerStatement, printSaleInvoice, printSupplierStatement, canAccess, statusClass, statusLabel, roleLabel }
+export { printCustomerStatement, exportCustomerStatement, printSaleInvoice, printSupplierStatement, canAccess, statusClass, statusLabel, roleLabel }

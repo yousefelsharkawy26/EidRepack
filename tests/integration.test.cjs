@@ -6,7 +6,7 @@ const assert = require('node:assert/strict')
 const { randomUUID } = require('node:crypto')
 const Database = require('better-sqlite3')
 const { applyMigrations, configureDatabase } = require('../electron/migrations/runner.cjs')
-const { registerOperationHandlers, registerQueryHandlers } = require('../electron/services/ipc.cjs')
+const { registerIpcHandlers } = require('../electron/services/ipc.cjs')
 const { createSecurity } = require('../electron/security.cjs')
 const operations = require('../electron/services/operations.cjs')
 
@@ -19,17 +19,16 @@ function makeHarness() {
   const security = createSecurity(db)
   const handlers = new Map()
   const ipcMain = { handle: (channel, fn) => handlers.set(channel, fn) }
-  registerOperationHandlers(ipcMain, () => db, event => security.context(event), { invalidateUser: userId => security.invalidate(userId) })
-  registerQueryHandlers(ipcMain, () => db, event => security.context(event))
+  registerIpcHandlers(ipcMain, () => db, event => security.context(event), { invalidateUser: userId => security.invalidate(userId) })
   const event = { sender: { id: 1 } }
   const invokeWith = (ev, channel, payload = {}) => handlers.get(channel)(ev, payload)
   const invoke = (channel, payload = {}) => invokeWith(event, channel, payload)
   const call = (name, payload = {}) => {
-    const response = invoke(`operation:${name}`, { ...payload, clientRequestId: randomUUID() })
+    const response = invoke('command:run', { name, payload: { ...payload, clientRequestId: randomUUID() } })
     assert.equal(response.ok, true, `${name} should succeed`)
     return response.data
   }
-  const snapshot = () => invoke('query:snapshot').snapshot
+  const snapshot = () => invoke('query:run', { name: 'query:snapshot' }).snapshot
   return { db, security, event, invoke, invokeWith, call, snapshot }
 }
 
@@ -144,22 +143,27 @@ test('IPC layer enforces authentication and role permissions', () => {
   const harness = makeHarness()
   const { security, event, invoke } = harness
   // No session: everything is rejected.
-  assert.throws(() => invoke('query:snapshot'), /Authentication required/)
-  assert.throws(() => invoke('operation:settings:save', { key: 'company_name', value: 'x', clientRequestId: randomUUID() }), /Authentication required/)
+  assert.throws(() => invoke('query:run', { name: 'query:snapshot' }), /Authentication required/)
+  assert.throws(() => invoke('command:run', { name: 'settings:save', payload: { key: 'company_name', value: 'x', clientRequestId: randomUUID() } }), /Authentication required/)
 
-  security.bootstrap({ username: 'owner', displayName: 'المالك', password: 'owner-secret-1', pin: '1234' })
+  const bootstrapped = security.bootstrap({ username: 'owner', displayName: 'المالك', password: 'owner-secret-1', pin: '1234' })
+  assert.ok(bootstrapped.permissions.commands.includes('settings:save'))
+  assert.ok(bootstrapped.permissions.screens.includes('settings'))
   const ownerEvent = { sender: { id: 1 } }
-  security.login(ownerEvent.sender, { username: 'owner', password: 'owner-secret-1' })
+  const owner = security.login(ownerEvent.sender, { username: 'owner', password: 'owner-secret-1' })
+  assert.deepEqual(owner.permissions, bootstrapped.permissions)
 
   // A sales user cannot manage settings, users, or reverse payments.
   const salesEvent = { sender: { id: 2 } }
-  invoke('operation:user:save', { username: 'seller', displayName: 'بائع', role: 'sales', password: 'seller-secret-1', clientRequestId: randomUUID() })
+  invoke('command:run', { name: 'user:save', payload: { username: 'seller', displayName: 'بائع', role: 'sales', password: 'seller-secret-1', clientRequestId: randomUUID() } })
     ? null : assert.fail('owner should create users')
   security.login(salesEvent.sender, { username: 'seller', password: 'seller-secret-1' })
-  assert.throws(() => harness.invokeWith(salesEvent, 'operation:settings:save', { key: 'company_name', value: 'y', clientRequestId: randomUUID() }), /Permission denied/)
-  assert.throws(() => harness.invokeWith(salesEvent, 'operation:payment:reverse', { paymentId: 'p-1', reason: 'x', clientRequestId: randomUUID() }), /Permission denied/)
+  assert.throws(() => harness.invokeWith(salesEvent, 'command:run', { name: 'settings:save', payload: { key: 'company_name', value: 'y', clientRequestId: randomUUID() } }), /Permission denied/)
+  assert.throws(() => harness.invokeWith(salesEvent, 'command:run', { name: 'payment:reverse', payload: { paymentId: 'p-1', reason: 'x', clientRequestId: randomUUID() } }), /Permission denied/)
+  assert.ok(security.session(salesEvent).permissions.commands.includes('customer:collect'))
+  assert.ok(!security.session(salesEvent).permissions.commands.includes('payment:reverse'))
   // ...but passes the ACL for sale-facing operations (fails later on data).
-  assert.throws(() => harness.invokeWith(salesEvent, 'operation:customer:collect', { customerId: 'missing', amountMinor: 1, clientRequestId: randomUUID() }), /Customer not found/)
+  assert.throws(() => harness.invokeWith(salesEvent, 'command:run', { name: 'customer:collect', payload: { customerId: 'missing', amountMinor: 1, clientRequestId: randomUUID() } }), /Customer not found/)
 })
 
 test('operation calls are idempotent per clientRequestId', () => {
@@ -168,10 +172,46 @@ test('operation calls are idempotent per clientRequestId', () => {
   security.bootstrap({ username: 'owner', displayName: 'المالك', password: 'owner-secret-1', pin: '1234' })
   security.login(event.sender, { username: 'owner', password: 'owner-secret-1' })
   const requestId = randomUUID()
-  const first = invoke('operation:customer:save', { name: 'عميل التكرار', clientRequestId: requestId })
-  const second = invoke('operation:customer:save', { name: 'عميل التكرار', clientRequestId: requestId })
+  const first = invoke('command:run', { name: 'customer:save', payload: { name: 'عميل التكرار', clientRequestId: requestId } })
+  const second = invoke('command:run', { name: 'customer:save', payload: { name: 'عميل التكرار', clientRequestId: requestId } })
   assert.deepEqual(second, first)
   assert.equal(harness.db.prepare('SELECT COUNT(*) AS n FROM customers').get().n, 1)
   // The same request id bound to a different command is rejected.
-  assert.throws(() => invoke('operation:supplier:save', { name: 'مورد', clientRequestId: requestId }), /different command/)
+  assert.throws(() => invoke('command:run', { name: 'supplier:save', payload: { name: 'مورد', clientRequestId: requestId } }), /different command/)
+})
+
+
+test('generic queries preserve role filtering, pagination, and cost visibility', () => {
+  const harness = makeHarness()
+  const { security, event, call, invoke, invokeWith } = harness
+  security.bootstrap({ username: 'owner', displayName: 'المالك', password: 'owner-secret-1', pin: '1234' })
+  security.login(event.sender, { username: 'owner', password: 'owner-secret-1' })
+  const ids = seedCatalog(harness)
+  call('inventory:opening', { itemId: ids.raw, quantity: 200, costMinor: 1000, date: NOW })
+  call('purchase:confirm', { supplierId: ids.supplier, itemId: ids.raw, quantity: 1000, subtotalMinor: 5000, totalMinor: 5000, paidMinor: 0, number: 'PUR-Q-1', date: NOW })
+  for (const [username, role] of [['seller', 'sales'], ['warehouse', 'warehouse'], ['buyer', 'purchasing']]) {
+    call('user:save', { username, displayName: username, role, password: `${username}-secret-1` })
+  }
+  const sessions = {}
+  for (const [id, username] of [[2, 'seller'], [3, 'warehouse'], [4, 'buyer']]) {
+    const sender = { id }
+    security.login(sender, { username, password: `${username}-secret-1` })
+    sessions[username] = { sender }
+  }
+
+  const query = (sender, name, payload) => invokeWith(sender, 'query:run', { name, payload })
+  const ownerRows = query(event, 'inventory:movements', { limit: 20 }).rows
+  const warehouseRows = query(sessions.warehouse, 'inventory:movements', { limit: 20 }).rows
+  const purchasingRows = query(sessions.buyer, 'inventory:movements', { limit: 20 }).rows
+  assert.ok(ownerRows.some(row => Object.hasOwn(row, 'cost_minor')))
+  assert.ok(warehouseRows.length >= 2)
+  assert.ok(warehouseRows.every(row => !Object.hasOwn(row, 'cost_minor')))
+  assert.ok(purchasingRows.length > 0)
+  assert.ok(purchasingRows.every(row => row.movement_type === 'purchase' && !Object.hasOwn(row, 'cost_minor')))
+  assert.throws(() => query(sessions.seller, 'invoices:list', { kind: 'purchase' }), /Permission denied/)
+  assert.throws(() => query(sessions.buyer, 'invoices:list', { kind: 'sales' }), /Permission denied/)
+  assert.throws(() => query(event, 'inventory:movements', { cursor: '1x' }), /must match pattern/)
+  assert.throws(() => query(event, 'inventory:movements', { limit: 201 }), /Too big/)
+  assert.throws(() => invoke('command:run', { name: 'customer:save', payload: { name: 'محاولة هوية', userId: 'user-owner', clientRequestId: randomUUID() } }), /Identity is derived from main-process session/)
+  assert.throws(() => invoke('command:run', { name: 'customer:save', payload: { name: 'محاولة دور', role: 'owner', clientRequestId: randomUUID() } }), /Role identity is derived from main-process session/)
 })

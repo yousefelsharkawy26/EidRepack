@@ -2,7 +2,10 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const Database = require('better-sqlite3')
 const { applyMigrations, configureDatabase } = require('../electron/migrations/runner.cjs')
-const operations = require('../electron/services/operations.cjs')
+const businessOperations = require('../electron/services/operations.cjs')
+const { randomUUID } = require('node:crypto')
+const { registry } = require('../electron/core/registry.cjs')
+const { dispatchCommand } = require('../electron/core/dispatcher.cjs')
 
 function freshDatabase() {
   const db = new Database(':memory:')
@@ -13,6 +16,25 @@ function freshDatabase() {
 
 const NOW = '2026-01-01T09:00:00.000Z'
 const ownerCtx = { ctx: { userId: 'user-owner', role: 'owner' } }
+
+const operationChannels = {
+  confirmPurchase: 'purchase:confirm', createOpeningStock: 'inventory:opening',
+  confirmPacking: 'packing:confirm', confirmSale: 'sale:confirm',
+  recordCollection: 'customer:collect', returnSale: 'sale:return',
+  saveCustomer: 'customer:save', updateReminder: 'reminder:update'
+}
+const operations = {
+  ...businessOperations,
+  ...Object.fromEntries(Object.entries(operationChannels).map(([method, name]) => [method, (db, input, operationContext = ownerCtx) => {
+    const ctx = operationContext?.ctx || operationContext
+    return dispatchCommand({
+      registry,
+      getDatabase: () => db,
+      getContext: () => ctx,
+      raw: { name, payload: { ...input, clientRequestId: randomUUID() } }
+    }).data
+  }]))
+}
 
 function seedFixtures(db) {
   const now = NOW

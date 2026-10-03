@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs')
 const { z } = require('zod')
 const { randomUUID } = require('node:crypto')
+const { permissionsForRole } = require('./core/policy.cjs')
 
 const roles = ['owner', 'sales', 'warehouse', 'purchasing']
 const loginSchema = z.object({ username: z.string().trim().min(1).max(80), password: z.string().min(1).max(200) }).strict()
@@ -12,7 +13,7 @@ function createSecurity(database) {
   const failures = new Map()
   const pinFailures = new Map()
   function userById(userId) { return database.prepare('SELECT id,username,display_name,role,is_active FROM users WHERE id=?').get(userId) }
-  function safeUser(user) { return { id: user.id, username: user.username, displayName: user.display_name, role: user.role } }
+  function safeUser(user) { return { id: user.id, username: user.username, displayName: user.display_name, role: user.role, permissions: permissionsForRole(user.role) } }
   function bootstrap(payload) {
     const input = bootstrapSchema.parse(payload)
     return database.transaction(() => {
@@ -23,7 +24,7 @@ function createSecurity(database) {
         .run(id, input.username, input.displayName, bcrypt.hashSync(input.password, 12), bcrypt.hashSync(input.pin, 12), date, date)
       database.prepare('INSERT INTO audit_log (id,user_id,action,entity,entity_id,after_json,created_at) VALUES (?,?,?,?,?,?,?)')
         .run(randomUUID(), id, 'auth.bootstrap', 'user', id, JSON.stringify({ username: input.username, role: 'owner' }), date)
-      return { id, username: input.username, displayName: input.displayName, role: 'owner' }
+      return { id, username: input.username, displayName: input.displayName, role: 'owner', permissions: permissionsForRole('owner') }
     }).immediate()
   }
   function login(webContents, payload) {

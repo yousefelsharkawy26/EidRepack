@@ -18,6 +18,7 @@
     "lint": "eslint src",
     "format": "prettier --write .",
     "typecheck": "tsc -b --noEmit",
+    "docs:commands": "node scripts/docs-commands.cjs",
     "test:migrations": "node --test tests/migrations.test.cjs",
     "test:operations": "node --test tests/operations.test.cjs",
     "test": "node --test tests/*.test.cjs",

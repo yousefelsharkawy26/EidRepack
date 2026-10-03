@@ -3,7 +3,7 @@ const fs = require('node:fs')
 const path = require('path')
 const Database = require('better-sqlite3')
 const { z } = require('zod')
-const { registerOperationHandlers, registerQueryHandlers } = require('./services/ipc.cjs')
+const { registerIpcHandlers } = require('./services/ipc.cjs')
 const { applyMigrations, configureDatabase } = require('./migrations/runner.cjs')
 const { createSecurity } = require('./security.cjs')
 const { contentSecurityPolicy, getViteOrigin, isViteDevelopmentDocument } = require('./csp.cjs')
@@ -116,8 +116,7 @@ app.whenReady().then(async () => {
       : details.responseHeaders
   }))
   const getContext = event => { assertTrustedFrame(event); return security.context(event) }
-  registerOperationHandlers(ipcMain, () => database, getContext, { invalidateUser: userId => security.invalidate(userId) })
-  registerQueryHandlers(ipcMain, () => database, getContext)
+  registerIpcHandlers(ipcMain, () => database, getContext, { invalidateUser: userId => security.invalidate(userId) })
   ipcMain.handle('auth:bootstrap', (event, payload) => { assertTrustedFrame(event); return security.bootstrap(payload) })
   ipcMain.handle('auth:login', (event, payload) => { assertTrustedFrame(event); return security.login(event.sender, payload) })
   ipcMain.handle('auth:logout', event => { assertTrustedFrame(event); return security.logout(event) })

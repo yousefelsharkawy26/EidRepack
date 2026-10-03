@@ -115,15 +115,15 @@ function App() {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (!currentUser) return;
-      if (event.key === "F2" && canAccess(currentUser.role, "sales")) {
+      if (event.key === "F2" && canAccess(currentUser.permissions.screens, "sales")) {
         event.preventDefault();
         setScreen("sales");
       }
-      if (event.key === "F3" && canAccess(currentUser.role, "purchases")) {
+      if (event.key === "F3" && canAccess(currentUser.permissions.screens, "purchases")) {
         event.preventDefault();
         setScreen("purchases");
       }
-      if (event.key === "F4" && canAccess(currentUser.role, "packing")) {
+      if (event.key === "F4" && canAccess(currentUser.permissions.screens, "packing")) {
         event.preventDefault();
         setScreen("packing");
       }
@@ -136,7 +136,7 @@ function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [currentUser]);
   useEffect(() => {
-    if (currentUser && !canAccess(currentUser.role, screen))
+    if (currentUser && !canAccess(currentUser.permissions.screens, screen))
       setScreen("dashboard");
   }, [currentUser, screen]);
 
@@ -161,7 +161,7 @@ function App() {
     setPhase("login");
   };
   const renderScreen = () => {
-    if (!state || !currentUser || !canAccess(currentUser.role, screen))
+    if (!state || !currentUser || !canAccess(currentUser.permissions.screens, screen))
       return null;
     switch (screen) {
       case "dashboard":
@@ -313,7 +313,7 @@ function App() {
       />
     );
   const visibleNav = nav.filter((item) =>
-    canAccess(currentUser.role, item.key),
+    canAccess(currentUser.permissions.screens, item.key),
   );
   return (
     <div className="app">
@@ -401,7 +401,7 @@ function App() {
               />
               <kbd>Ctrl K</kbd>
             </div>
-            {canAccess(currentUser.role, "reminders") && (
+            {canAccess(currentUser.permissions.screens, "reminders") && (
               <button
                 className="icon-button"
                 aria-label="الإشعارات"
@@ -419,7 +419,7 @@ function App() {
             query={search}
             onPick={(next) => {
               setSearch("");
-              if (canAccess(currentUser.role, next)) setScreen(next);
+              if (canAccess(currentUser.permissions.screens, next)) setScreen(next);
             }}
           />
         )}

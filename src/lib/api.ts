@@ -10,12 +10,15 @@ import {
   OpeningEntry, Packing, PromiseToPay, Purchase, PurchaseDraft, PurchaseReturn, Reminder, ReminderRule,
   Sale, SalesReturn, StockLot, StockMovement, Supplier, SupplierPayment, User, UserRole
 } from './domain'
+import { run as runCommand, type CommandName } from '../shared/api/commands'
+import type { Screen } from './types'
 
 export interface SessionUser {
   id: string
   username: string
   displayName: string
   role: UserRole
+  permissions: { commands: string[]; screens: Screen[] }
 }
 
 export interface AuthStatus {
@@ -32,8 +35,8 @@ interface RepackBridge {
     status: () => Promise<AuthStatus>
   }
   elevate: (payload: { pin: string; scope: 'inventory-adjustment' | 'customer-credit' }) => Promise<{ scope: string; expiresInSeconds: number }>
-  queries: { snapshot: () => Promise<{ ok: boolean; snapshot: Snapshot }> }
-  operations: Record<string, (payload: Record<string, unknown>) => Promise<{ ok: boolean; data: any }>>
+  command: (name: string, payload: Record<string, unknown>) => Promise<{ ok: boolean; data: unknown }>
+  query: (name: string, payload?: Record<string, unknown>) => Promise<any>
   createBackup: () => Promise<string | false>
   restoreBackup: () => Promise<boolean>
   openWhatsApp: (phone: string, message: string) => Promise<void>
@@ -64,10 +67,24 @@ export const toEgp = (minor: number) => minor / 100
 export const toBase = (displayQty: number, factor: number) => Math.round(displayQty * factor)
 export const toDisplay = (baseQty: number, factor: number) => baseQty / factor
 
+const legacyCommandNames: Record<string, CommandName> = {
+  confirmPurchase: 'purchase:confirm', returnPurchase: 'purchase:return', confirmPacking: 'packing:confirm',
+  cancelPacking: 'packing:cancel', confirmSale: 'sale:confirm', recordCollection: 'customer:collect',
+  reversePayment: 'payment:reverse', returnSale: 'sale:return', adjustStock: 'inventory:adjust',
+  createOpeningStock: 'inventory:opening', recordPromise: 'customer:promise',
+  recordSupplierPayment: 'supplier:pay', writeOffSale: 'customer:writeoff',
+  savePurchaseDraft: 'purchase-draft:save', deletePurchaseDraft: 'purchase-draft:delete',
+  updateReminder: 'reminder:update', saveReminderRule: 'reminder-rule:save',
+  saveReminderTemplate: 'reminder-template:save', saveCustomer: 'customer:save',
+  saveSupplier: 'supplier:save', saveItem: 'item:save', saveRecipe: 'recipe:save',
+  saveUser: 'user:save', saveSetting: 'settings:save'
+}
+
+/** @deprecated Use run from shared/api/commands with a channel name. */
 export async function callOperation(name: string, payload: Record<string, unknown>): Promise<any> {
-  const response = await bridge().operations[name]({ ...payload, clientRequestId: crypto.randomUUID() })
-  if (!response?.ok) throw new Error('رفض النظام العملية')
-  return response.data
+  const command = legacyCommandNames[name]
+  if (!command) throw new Error(`Unknown operation: ${name}`)
+  return runCommand(command, payload as never)
 }
 
 // ---------- Snapshot shapes (integer piasters / base units) ----------
@@ -296,7 +313,7 @@ export function mapSnapshot(snapshot: Snapshot): AppState {
 }
 
 export async function loadSnapshot(): Promise<AppState> {
-  const response = await bridge().queries.snapshot()
+  const response = await bridge().query('query:snapshot')
   return mapSnapshot(response.snapshot)
 }
 
