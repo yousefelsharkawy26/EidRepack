@@ -37,7 +37,7 @@ jobs:
         run: npm run build
 
       - name: Package Windows installers
-        run: npx electron-builder --win --x64 -c.directories.output=release
+        run: npx electron-builder --win --x64 --publish never
 
       - name: Upload Windows installers
         uses: actions/upload-artifact@v7

@@ -60,6 +60,9 @@
   "build": {
     "appId": "com.repackmanager.app",
     "productName": "مدير التعبئة",
+    "directories": {
+      "output": "release"
+    },
     "files": [
       "dist/**/*",
       "electron/**/*",
