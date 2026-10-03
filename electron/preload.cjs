@@ -14,5 +14,14 @@ contextBridge.exposeInMainWorld('repack', {
   createBackup: () => ipcRenderer.invoke('backup:create'),
   restoreBackup: () => ipcRenderer.invoke('backup:restore'),
   openWhatsApp: (phone, message) => ipcRenderer.invoke('whatsapp:open', phone, message),
-  printHtml: html => ipcRenderer.invoke('print:html', html)
+  getPrinters: () => ipcRenderer.invoke('print:printers'),
+  printHtml: (html, options) => ipcRenderer.invoke('print:html', html, options),
+  developerTools: {
+    dataMode: () => ipcRenderer.invoke('devtools:data-mode'),
+    setDataMode: mode => ipcRenderer.invoke('devtools:set-data-mode', { mode }),
+    backups: () => ipcRenderer.invoke('devtools:backups'),
+    logs: () => ipcRenderer.invoke('devtools:logs'),
+    factoryReset: payload => ipcRenderer.invoke('devtools:factory-reset', payload),
+    openTools: () => ipcRenderer.invoke('devtools:open-tools')
+  }
 })

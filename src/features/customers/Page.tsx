@@ -6,6 +6,7 @@ import { FileBarChart, Plus } from "lucide-react";
 import { printCustomerStatement } from "../print";
 import { exportCustomerStatement } from "../statements";
 import CustomerForm from "./CustomerForm";
+import { PaginationBar, usePagination } from "../../shared/ui/Pagination";
 
 function Customers() {
   const { state, currentUser } = useApp();
@@ -17,6 +18,7 @@ function CustomersContent() {
   const { state: snapshot, run, busy, currentUser: session, notify } = useApp();
   const state = snapshot!;
   const currentUser = session!;
+  const { pageItems, pagination } = usePagination(state.customers);
   const [formOpen, setFormOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [name, setName] = useState("");
@@ -133,7 +135,7 @@ function CustomersContent() {
             </tr>
           </thead>
           <tbody>
-            {state.customers.map((customer) => {
+            {pageItems.map((customer) => {
               const ratio = customer.creditLimit
                 ? customer.balance / customer.creditLimit
                 : 0;
@@ -217,6 +219,7 @@ function CustomersContent() {
             })}
           </tbody>
         </table>
+        <PaginationBar state={pagination}/>
       </section>
       <CustomerForm
         open={formOpen}

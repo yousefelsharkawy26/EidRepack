@@ -22,6 +22,7 @@ export interface SessionUser {
 export interface AuthStatus {
   needsBootstrap: boolean;
   legacyImport: { status: string; code?: string; message?: string; backupPath?: string };
+  dataMode: "production" | "demo";
 }
 
 interface RepackBridge {
@@ -38,7 +39,16 @@ interface RepackBridge {
   createBackup: () => Promise<string | false>;
   restoreBackup: () => Promise<boolean>;
   openWhatsApp: (phone: string, message: string) => Promise<void>;
-  printHtml: (html: string) => Promise<boolean>;
+  getPrinters: () => Promise<Array<{ name: string; displayName: string; available: boolean }>>;
+  printHtml: (html: string, options?: { deviceName?: string; color?: boolean; copies?: number; saveAsPdf?: boolean; destination?: 'printer' | 'pdf' | 'settings'; suggestedName?: string; footerText?: string }) => Promise<boolean>;
+  developerTools: {
+    dataMode: () => Promise<"production" | "demo">;
+    setDataMode: (mode: "production" | "demo") => Promise<{ mode: "production" | "demo" }>;
+    backups: () => Promise<Array<{ name:string; size:number; status:string; createdAt:string }>>;
+    logs: () => Promise<Array<{ at:string; level:string; message:string }>>;
+    factoryReset: (payload: { confirmation: "RESET" }) => Promise<{ backupName:string }>;
+    openTools: () => Promise<boolean>;
+  };
 }
 
 declare global {

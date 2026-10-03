@@ -18,6 +18,7 @@ export interface SnapshotItem {
   minStockBase: number;
   unitCostBaseMinor?: number;
   salePriceBaseMinor?: number;
+  hasStockMovements: boolean;
   isActive: boolean;
   recipe: { itemId: string; qtyPerUnitBase: number; kind: "raw" | "packaging" }[];
 }

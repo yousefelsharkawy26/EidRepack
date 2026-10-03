@@ -1,1 +1,1 @@
-export { escapeHtml, printCustomerStatement, printHtmlDocument, printSaleInvoice, printSupplierStatement } from "./documents";
+export { escapeHtml, printCustomerStatement, printHtmlDocument, printPurchaseInvoice, printPurchaseInvoiceOnPrinter, printSaleInvoice, printSaleInvoiceOnPrinter, printSupplierStatement } from "./documents";

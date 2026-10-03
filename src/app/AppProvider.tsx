@@ -110,7 +110,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         authStatus = await bridge().auth.status();
       } catch {
         setPhase("import-failed");
-        setStatus({ needsBootstrap: false, legacyImport: { status: "failed", message: "واجهة النظام غير متاحة؛ هذا الإصدار يعمل فقط داخل تطبيق سطح المكتب." } });
+        setStatus({ needsBootstrap: false, legacyImport: { status: "failed", message: "واجهة النظام غير متاحة؛ هذا الإصدار يعمل فقط داخل تطبيق سطح المكتب." }, dataMode: "production" });
         return;
       }
       setStatus(authStatus);

@@ -11,6 +11,7 @@ const modules = [
   require('./reminders/index.cjs'),
   require('./settings/index.cjs'),
   require('./users/index.cjs'),
+  require('./reports/index.cjs'),
   require('./snapshot/index.cjs')
 ]
 

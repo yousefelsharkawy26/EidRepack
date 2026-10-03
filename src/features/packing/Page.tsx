@@ -248,9 +248,19 @@ function PackingContent() {
       }
     });
   };
-  const confirmedPackings = state.packings.filter(
-    (packing) => packing.status !== "cancelled",
-  );
+  const copyPacking = (packing: Packing) => {
+    const item = state.items.find((entry) => entry.id === packing.itemId);
+    if (!item || item.active === false) return notify("لا يمكن نسخ الأمر لأن المنتج غير متاح.");
+    setItemId(item.id);
+    setUnits(packing.units);
+    setWaste(packing.waste);
+    setMode("target");
+    setLotMode("fifo");
+    setManualLotIds({});
+    const rawId = item.recipe?.find((line) => line.kind === "raw")?.itemId;
+    setAvailableRaw(state.items.find((entry) => entry.id === rawId)?.stock || 0);
+    notify(`تم نسخ ${packing.number} كأمر جديد غير معتمد؛ راجع التوفر والدفعات قبل الاعتماد.`);
+  };
   return (
     <>
       <PackingForm
@@ -283,7 +293,7 @@ function PackingContent() {
         onConfirm={confirm}
         busy={busy}
       />
-      {currentUser.role === "owner" && <PackingHistory state={state} packings={confirmedPackings} onCancel={(packing) => { setCancelling(packing); setCancelReason(""); }} />}
+      <PackingHistory state={state} packings={state.packings} canCancel={currentUser.role === "owner"} onCopy={copyPacking} onCancel={(packing) => { setCancelling(packing); setCancelReason(""); }} />
       <PackingCancelDialog
         packing={cancelling}
         reason={cancelReason}

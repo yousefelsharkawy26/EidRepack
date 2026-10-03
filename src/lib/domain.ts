@@ -29,6 +29,7 @@ export interface Item {
   unitCost: number
   salePrice: number
   active?: boolean
+  hasStockMovements?: boolean
   recipe?: RecipeLine[]
 }
 

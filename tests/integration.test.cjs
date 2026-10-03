@@ -89,7 +89,9 @@ test('renderer full cycle over IPC keeps books balanced', () => {
 
   let snap = snapshot()
   const phase0Snap = buildPhase0Snapshot(harness.db, { role: 'owner' })
-  assert.deepEqual({ ...snap, generatedAt: '<time>' }, { ...phase0Snap, generatedAt: '<time>' }, 'snapshot shape and values stay identical to Phase 0')
+  const compatibleSnapshot = { ...snap, items: snap.items.map(({ hasStockMovements, ...item }) => item), generatedAt: '<time>' }
+  assert.deepEqual(compatibleSnapshot, { ...phase0Snap, generatedAt: '<time>' }, 'snapshot business shape and values stay identical to Phase 0')
+  assert.ok(snap.items.every(item => item.hasStockMovements), 'items with recorded movements expose the editor guard')
   assert.equal(snap.items.find(item => item.id === ids.fin).stockBase, 100)
   assert.equal(snap.items.find(item => item.id === ids.raw).stockBase, 50000)
   assert.equal(snap.nextNumbers.INV, 'INV-' + new Date().getFullYear() + '-0001')
@@ -214,6 +216,11 @@ test('generic queries preserve role filtering, pagination, and cost visibility',
 
   const query = (sender, name, payload) => invokeWith(sender, 'query:run', { name, payload })
   const ownerRows = query(event, 'inventory:movements', { limit: 20 }).rows
+  const movementPage = query(event, 'inventory:movements', { limit: 1 })
+  assert.equal(movementPage.total, ownerRows.length)
+  assert.equal(movementPage.rows.length, 1)
+  assert.equal(movementPage.nextCursor, '1')
+  assert.notEqual(movementPage.rows[0].id, query(event, 'inventory:movements', { limit: 1, cursor: '1' }).rows[0].id)
   const warehouseRows = query(sessions.warehouse, 'inventory:movements', { limit: 20 }).rows
   const purchasingRows = query(sessions.buyer, 'inventory:movements', { limit: 20 }).rows
   assert.ok(ownerRows.some(row => Object.hasOwn(row, 'cost_minor')))

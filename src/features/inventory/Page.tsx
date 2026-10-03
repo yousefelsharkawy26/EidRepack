@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   bridge,
   ipcErrorMessage,
@@ -21,19 +22,25 @@ import MovementsLog from "./MovementsLog";
 import AdjustmentDialog from "./AdjustmentDialog";
 import InventoryHeader from "./InventoryHeader";
 import { useInventoryDraft } from "./useInventoryDraft";
+import InvoiceHistoryTable from "./InvoiceHistoryTable";
+import PurchaseHistoryTable from "./PurchaseHistoryTable";
+
+type InventoryTable = "items" | "sales" | "purchases";
 
 function Inventory() {
   const { state: snapshot, run, busy, currentUser: session, notify } = useApp();
   const {
     editingItem, setEditingItem, showItemForm, setShowItemForm, itemName, setItemName, itemSku, setItemSku,
     itemType, setItemType, baseUnit, setBaseUnit, minStock, setMinStock, initialStock, setInitialStock,
-    unitCost, setUnitCost, salePrice, setSalePrice, recipeRawId, setRecipeRawId, recipeRawQty, setRecipeRawQty,
-    recipePackagingId, setRecipePackagingId, recipePackagingQty, setRecipePackagingQty,
+    unitCost, setUnitCost, salePrice, setSalePrice, recipeLines, setRecipeLines,
     adjusting, setAdjusting, counted, setCounted, pin, setPin, showLedger, setShowLedger,
   } = useInventoryDraft();
   const state = snapshot;
+  const [activeTable, setActiveTable] = useState<InventoryTable>("items");
   if (!state || !session) return null;
   const currentUser = session;
+  const canViewSales = currentUser.role === "owner";
+  const canViewPurchases = currentUser.role === "owner" || currentUser.role === "purchasing";
   const activeRawItems = state.items.filter(
     (item) => item.type === "raw" && item.active !== false,
   );
@@ -50,22 +57,10 @@ function Inventory() {
     setInitialStock(item?.stock || 0);
     setUnitCost(item?.unitCost || 0);
     setSalePrice(item?.salePrice || 0);
-    setRecipeRawId(
-      item?.recipe?.find((line) => line.kind === "raw")?.itemId ||
-        activeRawItems[0]?.id ||
-        "",
-    );
-    setRecipeRawQty(
-      item?.recipe?.find((line) => line.kind === "raw")?.qty || 0.5,
-    );
-    setRecipePackagingId(
-      item?.recipe?.find((line) => line.kind === "packaging")?.itemId ||
-        activePackagingItems[0]?.id ||
-        "",
-    );
-    setRecipePackagingQty(
-      item?.recipe?.find((line) => line.kind === "packaging")?.qty || 1,
-    );
+    setRecipeLines(item?.recipe?.length ? item.recipe.map(line => ({ ...line })) : [
+      ...(activeRawItems[0] ? [{ itemId: activeRawItems[0].id, qty: 0.5, kind: "raw" as const }] : []),
+      ...(activePackagingItems[0] ? [{ itemId: activePackagingItems[0].id, qty: 1, kind: "packaging" as const }] : []),
+    ]);
     setShowItemForm(true);
   };
   // UX hint — backend is authoritative.
@@ -94,16 +89,13 @@ function Inventory() {
     const factor = UNIT_FACTORS[baseUnit] || 1;
     const factorOf = (itemId: string) =>
       state.items.find((candidate) => candidate.id === itemId)?.unitFactor || 1;
-    if (
-      itemType === "finished" &&
-      (!recipeRawId ||
-        !recipePackagingId ||
-        !Number.isFinite(recipeRawQty) ||
-        !Number.isFinite(recipePackagingQty) ||
-        recipeRawQty <= 0 ||
-        recipePackagingQty <= 0)
-    )
-      return notify("حدد المادة الخام والتغليف وكميتهما لكل عبوة.");
+    if (itemType === "finished") {
+      const itemIds = recipeLines.map(line => line.itemId);
+      if (!recipeLines.some(line => line.kind === "raw") || !recipeLines.some(line => line.kind === "packaging"))
+        return notify("أضف مادة خام واحدة ومادة تغليف واحدة على الأقل للوصفة.");
+      if (recipeLines.some(line => !line.itemId || !Number.isFinite(line.qty) || line.qty <= 0) || new Set(itemIds).size !== itemIds.length)
+        return notify("راجع مكونات الوصفة؛ الكمية يجب أن تكون موجبة وكل مكون فريدًا.");
+    }
     void run("item:save", {
           id: editingItem?.id,
           sku: normalizedSku,
@@ -123,22 +115,11 @@ function Inventory() {
         if (itemType === "finished" && savedItemId) {
           const recipeResult = await run("recipe:save", {
             finishedItemId: savedItemId,
-            lines: [
-              {
-                componentItemId: recipeRawId,
-                quantityPerUnitBase: toBase(
-                  recipeRawQty,
-                  factorOf(recipeRawId),
-                ),
-              },
-              {
-                componentItemId: recipePackagingId,
-                quantityPerUnitBase: toBase(
-                  recipePackagingQty,
-                  factorOf(recipePackagingId),
-                ),
-              },
-            ],
+            lines: recipeLines.map(line => ({
+              componentItemId: line.itemId,
+              quantityPerUnitBase: toBase(line.qty, factorOf(line.itemId)),
+              lineType: line.kind,
+            })),
           });
           if (!recipeResult) return;
         }
@@ -235,13 +216,20 @@ function Inventory() {
         onLedger={() => setShowLedger(true)}
         onAdjust={() => { const first = state.items[0]; if (first) { setAdjusting(first.id); setCounted(first.stock); } }}
       />
-      <StockTable
+      <div className="inventory-table-switcher" role="tablist" aria-label="جداول المخزون">
+        <button id="inventory-table-items" role="tab" aria-selected={activeTable === "items"} className={activeTable === "items" ? "active" : ""} onClick={() => setActiveTable("items")}>الأصناف والمخزون <span>{state.items.length}</span></button>
+        {canViewSales && <button id="inventory-table-sales" role="tab" aria-selected={activeTable === "sales"} className={activeTable === "sales" ? "active" : ""} onClick={() => setActiveTable("sales")}>فواتير البيع <span>{state.sales.length}</span></button>}
+        {canViewPurchases && <button id="inventory-table-purchases" role="tab" aria-selected={activeTable === "purchases"} className={activeTable === "purchases" ? "active" : ""} onClick={() => setActiveTable("purchases")}>فواتير الشراء <span>{state.purchases.length}</span></button>}
+      </div>
+      {activeTable === "items" && <div role="tabpanel" aria-labelledby="inventory-table-items"><StockTable
         items={state.items}
         role={currentUser.role}
         onAdjust={(item) => { setAdjusting(item.id); setCounted(item.stock); }}
         onEdit={openItemForm}
         onToggleActive={toggleItemActive}
-      />
+      /></div>}
+      {activeTable === "sales" && canViewSales && <InvoiceHistoryTable state={state} busy={busy} />}
+      {activeTable === "purchases" && canViewPurchases && <PurchaseHistoryTable state={state} />}
       <div className="split">
         <section className="card">
           <div className="card-title">
@@ -275,10 +263,7 @@ function Inventory() {
         salePrice={salePrice} setSalePrice={setSalePrice}
         initialStock={initialStock} setInitialStock={setInitialStock}
         rawItems={activeRawItems} packagingItems={activePackagingItems}
-        rawId={recipeRawId} setRawId={setRecipeRawId}
-        rawQty={recipeRawQty} setRawQty={setRecipeRawQty}
-        packagingId={recipePackagingId} setPackagingId={setRecipePackagingId}
-        packagingQty={recipePackagingQty} setPackagingQty={setRecipePackagingQty}
+        recipeLines={recipeLines} setRecipeLines={setRecipeLines}
       />
       <MovementsLog state={state} open={showLedger} onClose={() => setShowLedger(false)} movementLabel={movementLabel} />
       <AdjustmentDialog

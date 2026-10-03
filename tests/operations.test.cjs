@@ -134,6 +134,32 @@ test('confirmPacking consumes inputs FIFO and costs output per PRD example', () 
   db.close()
 })
 
+test('finished recipe supports multiple raw ingredients and packaging components', () => {
+  const db = freshDatabase()
+  seedFixtures(db)
+  const now = NOW
+  db.prepare("INSERT INTO items (id,sku,name,type,base_unit_id,min_stock_base,default_sale_price_minor,is_active,created_at,updated_at) VALUES ('raw-salt','RAW-2','ملح خام','raw','unit-g',0,0,1,?,?)").run(now, now)
+  operations.createOpeningStock(db, { itemId: 'raw-sugar', quantity: 20000, costMinor: 84000, date: '2026-01-01' }, ownerCtx)
+  operations.createOpeningStock(db, { itemId: 'raw-salt', quantity: 10000, costMinor: 10000, date: '2026-01-01' }, ownerCtx)
+  operations.createOpeningStock(db, { itemId: 'pack-bag', quantity: 100, costMinor: 5000, date: '2026-01-01' }, ownerCtx)
+  operations.createOpeningStock(db, { itemId: 'pack-label', quantity: 100, costMinor: 2000, date: '2026-01-01' }, ownerCtx)
+  operations.saveRecipe(db, { finishedItemId: 'fin-sugar', lines: [
+    { componentItemId: 'raw-sugar', quantityPerUnitBase: 500 },
+    { componentItemId: 'raw-salt', quantityPerUnitBase: 100 },
+    { componentItemId: 'pack-bag', quantityPerUnitBase: 1 },
+    { componentItemId: 'pack-label', quantityPerUnitBase: 1 },
+  ] }, ownerCtx)
+  operations.confirmPacking(db, { finishedItemId: 'fin-sugar', producedUnits: 10, wasteQty: 100,
+    inputs: [{ itemId: 'raw-sugar', quantity: 5100 }, { itemId: 'raw-salt', quantity: 1100 }, { itemId: 'pack-bag', quantity: 10 }, { itemId: 'pack-label', quantity: 10 }],
+    number: 'PCK-MULTI', date: '2026-01-02' }, ownerCtx)
+  assert.equal(stockOf(db, 'raw-sugar'), 14900)
+  assert.equal(stockOf(db, 'raw-salt'), 8900)
+  assert.equal(stockOf(db, 'pack-bag'), 90)
+  assert.equal(stockOf(db, 'pack-label'), 90)
+  assert.doesNotThrow(() => operations.checkInvariants(db))
+  db.close()
+})
+
 test('confirmPacking rejects inputs that do not match the recipe', () => {
   const db = freshDatabase()
   seedFixtures(db)

@@ -5,7 +5,7 @@ import { Field } from "../../shared/ui/Field";
 
 interface Props {
   state: AppState; rawItems: Item[]; supplier?: Supplier | undefined; effectiveSupplierId: string; setSupplierId: Dispatch<SetStateAction<string>>;
-  effectiveItemId: string; setItemId: Dispatch<SetStateAction<string>>; qty: number; setQty: Dispatch<SetStateAction<number>>;
+  effectiveItemId: string; onSelectItem: (itemId:string) => void; qty: number; setQty: Dispatch<SetStateAction<number>>;
   price: number; setPrice: Dispatch<SetStateAction<number>>; shipping: number; setShipping: Dispatch<SetStateAction<number>>;
   paid: number; setPaid: Dispatch<SetStateAction<number>>; purchaseDate: string; setPurchaseDate: Dispatch<SetStateAction<string>>;
   supplierInvoiceNumber: string; setSupplierInvoiceNumber: Dispatch<SetStateAction<string>>; dueDate: string; setDueDate: Dispatch<SetStateAction<string>>;
@@ -18,7 +18,7 @@ export default function PurchaseForm(p: Props) {
     <Field label="التاريخ"><input type="date" value={p.purchaseDate} onChange={(event) => p.setPurchaseDate(event.target.value)} /></Field>
     <Field label="رقم فاتورة المورد"><input value={p.supplierInvoiceNumber} onChange={(event) => p.setSupplierInvoiceNumber(event.target.value)} placeholder="اختياري" /></Field>
   </div><div className="lines"><div className="line-grid header"><span>الصنف</span><span>الكمية</span><span>سعر الكيلو / الوحدة</span><span>الإجمالي</span><span /></div>
-    <div className="line-grid"><div className="field"><select value={p.effectiveItemId} onChange={(event) => p.setItemId(event.target.value)}>{p.rawItems.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></div>
+    <div className="line-grid"><div className="field"><select value={p.effectiveItemId} onChange={(event) => p.onSelectItem(event.target.value)}>{p.rawItems.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></div>
       <div className="field"><input type="number" value={p.qty} min="1" onChange={(event) => p.setQty(Number(event.target.value))} /></div>
       <div className="field"><input type="number" value={p.price} min="0" onChange={(event) => p.setPrice(Number(event.target.value))} /></div><div className="line-total">{money(p.qty * p.price)}</div><span /></div>
   </div><div className="purchase-controls-grid">

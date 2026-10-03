@@ -62,9 +62,11 @@ test('registered query permissions preserve the role and query-kind matrix', () 
     'inventory:movements': ['owner', 'warehouse', 'purchasing'],
     'audit:list': ['owner'],
     'messages:list': ['owner', 'sales'],
-    'invoices:list': ['owner', 'sales', 'purchasing']
+    'invoices:list': ['owner', 'sales', 'purchasing'],
+    'reports:period': ['owner']
   })
   assert.equal(typeof registry.getQuery('invoices:list').handler, 'function')
+  assert.equal(typeof registry.getQuery('reports:period').handler, 'function')
 })
 
 test('every registered command appears in generated docs', () => {

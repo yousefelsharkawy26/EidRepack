@@ -1,19 +1,35 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import CreditOverrideModal from "./CreditOverrideModal";
 import { useSaleDraft } from "./useSaleDraft";
 import { bridge, ipcErrorMessage, toBase, toMinor } from "../../lib/api";
 import { creditCheck, daysFromNow, money, quantity, today } from "../../lib/domain";
 import { useApp } from "../../app/AppProvider";
 import { ArrowDownLeft, CheckCircle2, CreditCard, Plus, Trash2, WalletCards } from "lucide-react";
+import InvoicePrintPrompt from "../print/InvoicePrintPrompt";
+import { useInvoicePrintPrompt } from "../print/useInvoicePrintPrompt";
 
 function SalesWorkspace() {
   const { state: snapshot, run, busy, notify } = useApp();
+  const invoicePrint = useInvoicePrintPrompt();
   const finished = snapshot?.items.filter(item => item.type === 'finished' && item.active !== false) || []
   const draft = useSaleDraft(finished);
   const { customerId, setCustomerId, payment, setPayment, paid, setPaid, lines, setLines,
     firstFinishedLine, overrideOpen, setOverrideOpen, overridePin, setOverridePin,
     overrideReason, setOverrideReason, overrideGranted, setOverrideGranted } = draft;
   const [verifying, setVerifying] = useState(false)
+  useEffect(() => {
+    const pendingId = localStorage.getItem("repack.pendingSaleCopyId");
+    if (!pendingId || !snapshot) return;
+    localStorage.removeItem("repack.pendingSaleCopyId");
+    const source = snapshot.sales.find(sale => sale.id === pendingId);
+    if (!source || source.status === "cancelled" || !source.lines.length) return notify("تعذر نسخ الفاتورة المحددة.");
+    setCustomerId(source.customerId);
+    setLines(source.lines.map(line => ({ itemId:line.itemId, qty:line.qty, price:line.price })));
+    setPayment("credit");
+    setPaid(0);
+    setOverrideGranted(null);
+    notify(`تم نسخ ${source.number} كفاتورة جديدة غير معتمدة؛ راجعها قبل الاعتماد.`);
+  }, [snapshot, setCustomerId, setLines, setPayment, setPaid, setOverrideGranted, notify]);
   if (!snapshot) return null;
   const state = snapshot;
   // Any change to the customer or the invoice invalidates a previously granted
@@ -58,8 +74,11 @@ function SalesWorkspace() {
       notes: undefined,
       lines: lines.map(line => ({ itemId: line.itemId, quantity: toBase(line.qty, factorOf(line.itemId)), lineTotalMinor: toMinor(line.qty * line.price) })),
       overrideReason: overrideGranted?.reason
-    }, 'تم اعتماد الفاتورة وتحديث المخزون والمديونية.').then(ok => {
-      if (ok) { setOverrideGranted(null); setLines(firstFinishedLine()); setPaid(0) }
+    }, 'تم اعتماد الفاتورة وتحديث المخزون والمديونية.').then(result => {
+      if (result) {
+        setOverrideGranted(null); setLines(firstFinishedLine()); setPaid(0)
+        void invoicePrint.offerPrint({ kind: 'sale', id: result.data.id, number: state.nextNumbers.INV })
+      }
     })
   }
   const verifyOverride = async () => {
@@ -90,7 +109,8 @@ function SalesWorkspace() {
       {credit > 0 && !check.allowed && <div className="notice credit-warning"><b>تجاوز حد الائتمان</b><span>يتطلب دفع الفرق أو PIN المالك.</span></div>}</aside></div>
     {overrideOpen && <CreditOverrideModal customerName={customer.name} credit={credit} available={check.available}
       verifying={verifying} pin={overridePin} setPin={setOverridePin} reason={overrideReason} setReason={setOverrideReason}
-      onVerify={() => { void verifyOverride() }} onClose={() => setOverrideOpen(false)} />}</>
+      onVerify={() => { void verifyOverride() }} onClose={() => setOverrideOpen(false)} />}
+    {invoicePrint.pending && <InvoicePrintPrompt invoice={invoicePrint.pending} printing={invoicePrint.printing} onPrint={() => { void invoicePrint.print() }} onSkip={invoicePrint.skip} />}</>
 }
 
 export default SalesWorkspace

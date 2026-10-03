@@ -11,6 +11,7 @@ function contributeSnapshot({ db, ctx, localDateString, readSettings, unitFor, n
       // Weighted average cost per BASE unit, from live lots.
       unitCostBaseMinor: item.stock_base > 0 ? Math.round(item.cost_base / item.stock_base) : 0,
       salePriceBaseMinor: item.default_sale_price_minor,
+      hasStockMovements: Boolean(item.has_stock_movements),
       isActive: Boolean(item.is_active),
       recipe: recipeLines
         .filter(line => line.finished_item_id === item.id)

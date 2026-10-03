@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Item, ItemType } from "../../lib/domain";
+import type { Item, ItemType, RecipeLine } from "../../lib/domain";
 
 export function useInventoryDraft() {
   const [editingItem, setEditingItem] = useState<Item | null>(null);
@@ -12,10 +12,7 @@ export function useInventoryDraft() {
   const [initialStock, setInitialStock] = useState(0);
   const [unitCost, setUnitCost] = useState(0);
   const [salePrice, setSalePrice] = useState(0);
-  const [recipeRawId, setRecipeRawId] = useState("");
-  const [recipeRawQty, setRecipeRawQty] = useState(0.5);
-  const [recipePackagingId, setRecipePackagingId] = useState("");
-  const [recipePackagingQty, setRecipePackagingQty] = useState(1);
+  const [recipeLines, setRecipeLines] = useState<RecipeLine[]>([]);
   const [adjusting, setAdjusting] = useState<string | null>(null);
   const [counted, setCounted] = useState(0);
   const [pin, setPin] = useState("");
@@ -24,8 +21,7 @@ export function useInventoryDraft() {
     editingItem, setEditingItem, showItemForm, setShowItemForm, itemName, setItemName,
     itemSku, setItemSku, itemType, setItemType, baseUnit, setBaseUnit, minStock, setMinStock,
     initialStock, setInitialStock, unitCost, setUnitCost, salePrice, setSalePrice,
-    recipeRawId, setRecipeRawId, recipeRawQty, setRecipeRawQty,
-    recipePackagingId, setRecipePackagingId, recipePackagingQty, setRecipePackagingQty,
+    recipeLines, setRecipeLines,
     adjusting, setAdjusting, counted, setCounted, pin, setPin, showLedger, setShowLedger,
   };
 }

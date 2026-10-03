@@ -1,296 +1,130 @@
-import ReportKpi from "../../components/ReportKpi";
-import ReportRow from "../../components/ReportRow";
-import { useApp } from "../../app/AppProvider";
-import { money, quantity, saleStatus, today } from "../../lib/domain";
+import { useEffect, useMemo, useState } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { useApp } from '../../app/AppProvider'
+import { bridge, ipcErrorMessage } from '../../lib/api'
+import { today } from '../../lib/domain'
+import { printHtmlDocument } from '../print'
+import ReportDocument from './ReportDocument'
+import { getReportData } from './report-data'
+import type { ReportData } from './report-data'
+import reportCss from './styles.css?inline'
+import cairoArabicFont from '../../fonts/cairo-arabic.woff2?inline'
+import './styles.css'
 
-function Reports() {
-  const { state, currentUser } = useApp();
-  if (!state || !currentUser) return null;
-  const stockValue = state.items.reduce(
-    (sum, item) => sum + item.stock * item.unitCost,
-    0,
-  );
-  const cogs =
-    state.sales.reduce(
-      (sum, sale) =>
-        sum +
-        sale.lines.reduce(
-          (lineTotal, line) => lineTotal + line.cost * line.qty,
-          0,
-        ),
-      0,
-    ) - state.salesReturns.reduce((sum, item) => sum + item.cost, 0);
-  const grossSales = state.sales.reduce((sum, sale) => sum + sale.total, 0);
-  const returnsValue = state.salesReturns.reduce(
-    (sum, item) => sum + item.value,
-    0,
-  );
-  const netSales = grossSales - returnsValue;
-  const grossProfit = netSales - cogs;
-  const receivables = state.customers.reduce(
-    (sum, customer) => sum + customer.balance,
-    0,
-  );
-  const overdue = state.sales
-    .filter((sale) => saleStatus(sale) === "overdue")
-    .reduce((sum, sale) => sum + sale.total - sale.paid, 0);
-  const wasteByUnit = new Map<string, number>();
-  state.packings.forEach((packing) => {
-    const product = state.items.find((item) => item.id === packing.itemId);
-    const rawLine = product?.recipe?.find((line) => line.kind === "raw");
-    const unit =
-      state.items.find((item) => item.id === rawLine?.itemId)?.baseUnit ||
-      "وحدة";
-    wasteByUnit.set(unit, (wasteByUnit.get(unit) || 0) + packing.waste);
-  });
-  const wasteLabel = wasteByUnit.size
-    ? Array.from(wasteByUnit.entries())
-        .map(([unit, value]) => quantity(value, unit))
-        .join(" + ")
-    : quantity(0);
-  const productRows = state.items
-    .filter((item) => item.type === "finished")
-    .map((item) => {
-      const sold = state.sales.flatMap((sale) =>
-        sale.lines.filter((line) => line.itemId === item.id),
-      );
-      const returned = state.salesReturns.filter(
-        (entry) => entry.itemId === item.id,
-      );
-      const qtySold =
-        sold.reduce((sum, line) => sum + line.qty, 0) -
-        returned.reduce((sum, entry) => sum + entry.quantity, 0);
-      const revenue =
-        sold.reduce((sum, line) => sum + line.price * line.qty, 0) -
-        returned.reduce((sum, entry) => sum + entry.value, 0);
-      const cost =
-        sold.reduce((sum, line) => sum + line.cost * line.qty, 0) -
-        returned.reduce((sum, entry) => sum + entry.cost, 0);
-      return { item, qtySold, revenue, cost, profit: revenue - cost };
-    });
-  const exportCsv = () => {
-    const rows = [
-      ["الصنف", "الكمية الصافية", "صافي المبيعات", "التكلفة", "الربح"],
-      ...productRows.map((row) => [
-        row.item.name,
-        String(row.qtySold),
-        String(row.revenue),
-        String(row.cost),
-        String(row.profit),
-      ]),
-    ];
-    const blob = new Blob(
-      [
-        "\uFEFF" +
-          rows
-            .map((row) =>
-              row
-                .map((value) => '"' + value.replace(/"/g, '""') + '"')
-                .join(","),
-            )
-            .join("\n"),
-      ],
-      { type: "text/csv;charset=utf-8" },
-    );
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "repack-company-report-" + today() + ".csv";
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-  return (
-    <section className="reports-page">
-      <div className="section-header no-print">
-        <div>
-          <h2>التقارير والتحليلات</h2>
-          <p>تقرير مرجعي احترافي جاهز للطباعة على ورق A4</p>
-        </div>
-        <div className="toolbar">
-          <button className="secondary" onClick={exportCsv}>
-            تصدير CSV
-          </button>
-          <button className="primary" onClick={() => window.print()}>
-            طباعة التقرير الرسمي
-          </button>
-        </div>
-      </div>
-      <article className="professional-report" dir="rtl">
-        <header className="report-header">
-          <div className="report-brand">
-            <div className="report-mark">م</div>
-            <div>
-              <h1>{state.settings.companyName}</h1>
-              <p>نظام إدارة التجزئة والتعبئة</p>
-            </div>
-          </div>
-          <div className="report-meta">
-            <b>تقرير الأداء التشغيلي والمالي</b>
-            <span>رقم التقرير: RPT-{today().replace(/-/g, "")}</span>
-            <span>تاريخ الإصدار: {today()}</span>
-          </div>
-        </header>
-        <div className="report-rule" />
-        <div className="report-period">
-          <span>الفترة: من بداية استخدام النظام حتى {today()}</span>
-          <span>العملة: الجنيه المصري (EGP)</span>
-          <span>مُنشأ آليًا من سجلات النظام · للاستخدام الداخلي</span>
-        </div>
-        <section className="report-section">
-          <h2>الملخص التنفيذي</h2>
-          <div className="report-kpis">
-            <ReportKpi
-              label="صافي المبيعات"
-              value={money(netSales)}
-              detail={"إجمالي قبل المرتجعات " + money(grossSales)}
-            />
-            <ReportKpi
-              label="إجمالي الربح"
-              value={money(grossProfit)}
-              detail={
-                "هامش الربح " +
-                (netSales ? ((grossProfit / netSales) * 100).toFixed(1) : "0") +
-                "%"
-              }
-            />
-            <ReportKpi
-              label="ذمم العملاء"
-              value={money(receivables)}
-              detail={"متأخر منها " + money(overdue)}
-            />
-            <ReportKpi
-              label="قيمة المخزون"
-              value={money(stockValue)}
-              detail={quantity(state.items.length, "أصناف") + " فعالة"}
-            />
-          </div>
-        </section>
-        <section className="report-section">
-          <div className="report-section-title">
-            <h2>ربحية المنتجات</h2>
-            <span>تفصيل صافي الأداء بعد المرتجعات</span>
-          </div>
-          <table className="report-table">
-            <thead>
-              <tr>
-                <th>المنتج</th>
-                <th>الكمية الصافية</th>
-                <th>صافي المبيعات</th>
-                <th>تكلفة المبيعات</th>
-                <th>الربح</th>
-                <th>الهامش</th>
-              </tr>
-            </thead>
-            <tbody>
-              {productRows.map((row) => (
-                <tr key={row.item.id}>
-                  <td>
-                    <b>{row.item.name}</b>
-                    <small>{row.item.sku}</small>
-                  </td>
-                  <td>{quantity(row.qtySold, "عبوة")}</td>
-                  <td>{money(row.revenue)}</td>
-                  <td>{money(row.cost)}</td>
-                  <td
-                    className={
-                      row.profit >= 0 ? "report-positive" : "report-negative"
-                    }
-                  >
-                    {money(row.profit)}
-                  </td>
-                  <td>
-                    {row.revenue
-                      ? ((row.profit / row.revenue) * 100).toFixed(1) + "%"
-                      : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-        <div className="report-columns">
-          <section className="report-section">
-            <div className="report-section-title">
-              <h2>وضع المخزون</h2>
-              <span>التكلفة الحالية</span>
-            </div>
-            <table className="report-table compact">
-              <thead>
-                <tr>
-                  <th>الصنف</th>
-                  <th>الرصيد</th>
-                  <th>قيمة التكلفة</th>
-                  <th>الحالة</th>
-                </tr>
-              </thead>
-              <tbody>
-                {state.items.map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.name}</td>
-                    <td>{quantity(item.stock, item.baseUnit)}</td>
-                    <td>{money(item.stock * item.unitCost)}</td>
-                    <td>
-                      <span
-                        className={
-                          item.stock <= item.minStock
-                            ? "report-alert"
-                            : "report-ok"
-                        }
-                      >
-                        {item.stock <= item.minStock ? "إعادة طلب" : "سليم"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-          <section className="report-section">
-            <div className="report-section-title">
-              <h2>المؤشرات التشغيلية</h2>
-              <span>التعبئة والتحصيل</span>
-            </div>
-            <div className="report-list">
-              <ReportRow
-                label="أوامر التعبئة المعتمدة"
-                value={quantity(state.packings.length, "أمر")}
-              />
-              <ReportRow label="إجمالي الفاقد المسجل" value={wasteLabel} />
-              <ReportRow label="مبيعات مرتجعة" value={money(returnsValue)} />
-              <ReportRow
-                label="فواتير متأخرة"
-                value={quantity(
-                  state.sales.filter((sale) => saleStatus(sale) === "overdue")
-                    .length,
-                  "فواتير",
-                )}
-              />
-              <ReportRow label="الذمم المتأخرة" value={money(overdue)} />
-            </div>
-          </section>
-        </div>
-        <footer className="report-footer">
-          <div>
-            <span>أُعد التقرير بواسطة</span>
-            <b>{currentUser.displayName || "مدير النظام"}</b>
-          </div>
-          <div>
-            <span>اعتماد الإدارة</span>
-            <b>__________________</b>
-          </div>
-          <div>
-            <span>توقيع المسؤول المالي</span>
-            <b>__________________</b>
-          </div>
-        </footer>
-        <div className="report-disclaimer">
-          هذا التقرير مستخرج من سجلات النظام المحلية بتاريخ {today()}، وهو مرجع
-          تشغيلي داخلي للمنشأة.
-        </div>
-      </article>
-    </section>
-  );
+type ReportQuery = Parameters<typeof getReportData>[0] & { earliestDate: string }
+
+function localDate(value: string) {
+  const [year = 1970, month = 1, day = 1] = value.split('-').map(Number)
+  return new Date(year, month - 1, day)
 }
 
-export default Reports;
-import "./styles.css";
+function dateString(value: Date) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
+}
+
+function monthStart(value: Date) { return new Date(value.getFullYear(), value.getMonth(), 1) }
+
+function csvCell(value: string | number) {
+  return `"${String(value).replace(/"/g, '""')}"`
+}
+
+function exportReportCsv(data: ReportData) {
+  const sections: Array<[string, Array<Array<string | number>>]> = [
+    ['الملخص التنفيذي', [['المؤشر', 'القيمة'], ['إجمالي المبيعات قبل المرتجعات', data.summary.grossSales.toFixed(2)], ['المرتجعات', data.summary.returns.toFixed(2)], ['صافي المبيعات', data.summary.netSales.toFixed(2)], ['تكلفة المبيعات', data.summary.cogs.toFixed(2)], ['إجمالي الربح', data.summary.profit.toFixed(2)], ['هامش الربح %', data.summary.margin.toFixed(2)], ['المشتريات خلال الفترة', data.summary.purchases.toFixed(2)], ['التحصيلات خلال الفترة', data.summary.collections.toFixed(2)], ['أرصدة العملاء الحالية', data.summary.receivables.toFixed(2)], ['الذمم المتأخرة الحالية', data.summary.overdue.toFixed(2)], ['قيمة المخزون الحالية', data.summary.inventory.toFixed(2)]]],
+    ['ربحية المنتجات', [['الصنف', 'SKU', 'الكمية الصافية', 'الوحدة', 'صافي المبيعات', 'التكلفة', 'الربح', 'الهامش %'], ...data.products.map(row => [row.name, row.sku, row.quantity, row.unit, row.revenue.toFixed(2), row.cost.toFixed(2), row.profit.toFixed(2), row.margin.toFixed(2)])]],
+    ['المبيعات حسب اليوم', [['التاريخ', 'المبيعات', 'المرتجعات', 'الصافي', 'عدد الفواتير'], ...data.daily.map(row => [row.date, row.sales.toFixed(2), row.returns.toFixed(2), row.net.toFixed(2), row.invoices])]],
+    ['المشتريات حسب المورد', [['المورد', 'عدد الفواتير', 'الإجمالي', 'المدفوع', 'المتبقي'], ...data.purchases.map(row => [row.supplier_name, row.invoice_count, row.total.toFixed(2), row.paid.toFixed(2), row.remaining.toFixed(2)])]],
+    ['وضع المخزون الحالي', [['الصنف', 'SKU', 'الرصيد', 'الوحدة', 'متوسط تكلفة الوحدة', 'القيمة', 'الحالة'], ...data.inventory.map(row => [row.name, row.sku, row.quantity, row.unit, row.unitCost.toFixed(2), row.value.toFixed(2), row.status])]],
+    ['أرصدة العملاء الحالية', [['العميل', 'الرصيد', 'المتأخر', 'آخر دفعة'], ...data.customers.map(row => [row.name, row.balance.toFixed(2), row.overdue.toFixed(2), row.last_payment_date || ''])]],
+    ['أوامر التعبئة', [['رقم الأمر', 'التاريخ', 'المنتج', 'الوحدات المنتجة', 'الفاقد حسب الخامة'], ...data.packings.map(row => [row.number, row.date, row.item_name, row.produced_units, row.wasteDetails])]],
+    ['التحصيلات حسب العميل', [['العميل', 'عدد الدفعات', 'قيمة التحصيل'], ...data.collections.map(row => [row.customer_name, row.payment_count, row.amount.toFixed(2)])]]
+  ]
+  const content = sections.flatMap(([title, rows]) => [[csvCell(title)], ...rows.map(row => row.map(csvCell))]).map(row => row.join(',')).join('\r\n')
+  const url = URL.createObjectURL(new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `تقرير_${data.from}_إلى_${data.to}.csv`
+  link.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 30000)
+}
+
+function Reports() {
+  const { state, currentUser, notify } = useApp()
+  const currentDate = today()
+  const initialFrom = dateString(monthStart(localDate(currentDate)))
+  const [from, setFrom] = useState(initialFrom)
+  const [to, setTo] = useState(currentDate)
+  const [loaded, setLoaded] = useState<ReportQuery | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const validationError = !from || !to ? 'يرجى اختيار تاريخ البداية والنهاية.' : from > to ? 'تاريخ البداية يجب ألا يأتي بعد تاريخ النهاية.' : to > currentDate ? 'لا يمكن اختيار تاريخ مستقبلي.' : from > currentDate ? 'لا يمكن اختيار تاريخ مستقبلي.' : ''
+
+  useEffect(() => {
+    if (!state || !currentUser || validationError) { setLoaded(null); setLoading(false); return }
+    let active = true
+    setLoading(true)
+    setError('')
+    bridge().query<ReportQuery>('reports:period', { from, to }).then(result => {
+      if (active) setLoaded(result)
+    }).catch(reason => {
+      if (active) { setLoaded(null); setError(ipcErrorMessage(reason) || 'تعذر تحميل بيانات التقرير.') }
+    }).finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [from, to, state, currentUser, validationError])
+
+  const data = useMemo(() => state && loaded ? getReportData(loaded, state) : null, [loaded, state])
+  const applyRange = (start: Date, end = localDate(currentDate)) => {
+    setFrom(dateString(start))
+    setTo(dateString(end))
+  }
+  const shortcuts = [
+    { label: 'اليوم', run: () => applyRange(localDate(currentDate)) },
+    { label: 'هذا الأسبوع', run: () => { const start = localDate(currentDate); start.setDate(start.getDate() - ((start.getDay() + 1) % 7)); applyRange(start) } },
+    { label: 'هذا الشهر', run: () => applyRange(monthStart(localDate(currentDate))) },
+    { label: 'الشهر الماضي', run: () => { const end = new Date(localDate(currentDate).getFullYear(), localDate(currentDate).getMonth(), 0); applyRange(monthStart(end), end) } },
+    { label: 'هذه السنة', run: () => applyRange(new Date(localDate(currentDate).getFullYear(), 0, 1)) },
+    { label: 'منذ بداية النظام', run: () => { const start = loaded?.earliestDate || dateString(monthStart(localDate(currentDate))); applyRange(localDate(start)) } }
+  ]
+
+  const makePrintHtml = (report: ReportData) => {
+    const documentHtml = renderToStaticMarkup(<ReportDocument data={report} preparedBy={currentUser?.displayName || 'مدير النظام'} />)
+    const fontCss = `@font-face{font-family:Cairo;src:url('${cairoArabicFont}') format('woff2');font-style:normal;font-weight:100 900;font-display:block}`
+    return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>تقرير ${report.from} إلى ${report.to}</title><style>${fontCss}\n${reportCss}</style></head><body>${documentHtml}</body></html>`
+  }
+
+  const printReport = async (destination: 'printer' | 'pdf') => {
+    if (!data) return
+    try {
+      const ok = await printHtmlDocument(makePrintHtml(data), { destination, suggestedName: `تقرير_${data.from}_إلى_${data.to}.pdf`, footerText: `RPT-${data.today.replace(/-/g, '')} · ${data.from} إلى ${data.to}` })
+      if (!ok) notify(destination === 'pdf' ? 'تعذر حفظ التقرير بصيغة PDF؛ تحقق من صلاحية المجلد وحاول مرة أخرى.' : 'تعذرت الطباعة أو أُلغيت؛ تحقق من الطابعة وإعداداتها.')
+    } catch {
+      notify(destination === 'pdf' ? 'حدث خطأ أثناء حفظ ملف PDF.' : 'حدث خطأ أثناء تجهيز التقرير للطباعة.')
+    }
+  }
+
+  const exportCsv = () => { if (data) exportReportCsv(data) }
+  if (!state || !currentUser) return null
+  return <section className="reports-page">
+    <div className="section-header no-print"><div><h2>التقارير والتحليلات</h2><p>اختر الفترة وراجع التقرير قبل الطباعة أو التصدير</p></div></div>
+    <div className="report-toolbar no-print">
+      <div>
+        <div className="report-range">
+          <label>من<input aria-label="من تاريخ" type="date" value={from} max={currentDate} onChange={event => setFrom(event.target.value)} /></label>
+          <label>إلى<input aria-label="إلى تاريخ" type="date" value={to} max={currentDate} onChange={event => setTo(event.target.value)} /></label>
+        </div>
+        {validationError && <p className="report-error" role="alert">{validationError}</p>}
+        {error && <p className="report-error" role="alert">{error}</p>}
+      </div>
+      <div className="report-shortcuts" aria-label="اختصارات الفترة">{shortcuts.map(button => <button className="secondary" key={button.label} type="button" onClick={button.run}>{button.label}</button>)}</div>
+      <div className="report-actions">
+        <button className="secondary" disabled={!data || loading} onClick={exportCsv}>تصدير CSV</button>
+        <button className="secondary" disabled={!data || loading} onClick={() => void printReport('pdf')}>حفظ PDF</button>
+        <button className="primary" disabled={!data || loading} onClick={() => void printReport('printer')}>طباعة التقرير</button>
+      </div>
+    </div>
+    {loading && <div className="report-loading" role="status">جارٍ تحميل بيانات التقرير…</div>}
+    {!loading && data && <div className="report-preview-scroll"><ReportDocument data={data} preparedBy={currentUser.displayName || 'مدير النظام'} /></div>}
+  </section>
+}
+
+export default Reports

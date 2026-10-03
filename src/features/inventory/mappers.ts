@@ -16,6 +16,7 @@ export function mapItems(rows: SnapshotItem[], factor: (itemId: string) => numbe
     unitCost: item.unitCostBaseMinor != null ? toEgp(item.unitCostBaseMinor) * item.unit.factor : 0,
     salePrice: item.salePriceBaseMinor != null ? toEgp(item.salePriceBaseMinor) * item.unit.factor : 0,
     active: item.isActive,
+    hasStockMovements: item.hasStockMovements,
     recipe: item.recipe.map((line) => ({
       itemId: line.itemId,
       qty: toDisplay(line.qtyPerUnitBase, factor(line.itemId)),

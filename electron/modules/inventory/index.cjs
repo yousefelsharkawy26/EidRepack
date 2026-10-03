@@ -120,7 +120,9 @@ function register(registry) {
     handler: (db, ctx, page) => {
       const cost = ctx.role === 'owner' ? ', m.cost_minor' : ''
       const where = ctx.role === 'purchasing' ? " WHERE m.movement_type='purchase'" : ''
-      return paginateQuery(db, `SELECT m.id,m.item_id,i.name AS item_name,m.lot_id,m.movement_type,m.qty_base,m.balance_after_base,m.ref_type,m.ref_id,m.created_at${cost} FROM stock_movements m JOIN items i ON i.id=m.item_id${where} ORDER BY m.created_at DESC,m.rowid DESC`, [], page)
+      const result = paginateQuery(db, `SELECT m.id,m.item_id,i.name AS item_name,m.lot_id,m.movement_type,m.qty_base,m.balance_after_base,m.ref_type,m.ref_id,m.notes,m.created_at${cost} FROM stock_movements m JOIN items i ON i.id=m.item_id${where} ORDER BY m.created_at DESC,m.rowid DESC`, [], page)
+      const total = one(db, `SELECT COUNT(*) AS total FROM stock_movements m${where}`, []).total
+      return { ...result, total }
     }
   })
 }

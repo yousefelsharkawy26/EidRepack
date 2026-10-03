@@ -39,4 +39,5 @@ Generated from `electron/core/registry.cjs` by `npm run docs:commands`; do not e
 | `inventory:movements` | owner, warehouse, purchasing |
 | `messages:list` | owner, sales |
 | `audit:list` | owner |
+| `reports:period` | owner |
 | `query:snapshot` | owner, sales, warehouse, purchasing |

@@ -1,12 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toBase, toMinor } from "../../lib/api";
 import { useApp } from "../../app/AppProvider";
 import { daysFromNow, PurchaseDraft, today } from "../../lib/domain";
 import PurchaseForm from "./PurchaseForm";
 import { PurchaseActions, PurchaseDraftsPanel } from "./PurchaseDraftsPanel";
+import InvoicePrintPrompt from "../print/InvoicePrintPrompt";
+import { useInvoicePrintPrompt } from "../print/useInvoicePrintPrompt";
 
 function Purchases() {
   const { state: snapshot, run, busy, notify } = useApp();
+  const invoicePrint = useInvoicePrintPrompt();
   const state = snapshot;
   const rawItems = state?.items.filter(
     (item) => item.type !== "finished" && item.active !== false,
@@ -21,7 +24,40 @@ function Purchases() {
   const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
-  const [repeatPurchaseId, setRepeatPurchaseId] = useState("");
+  useEffect(() => {
+    if (!state) return;
+    const purchaseId = localStorage.getItem("repack.pendingPurchaseCopyId");
+    if (!purchaseId) return;
+    localStorage.removeItem("repack.pendingPurchaseCopyId");
+    const previous = state.purchases.find(purchase => purchase.id === purchaseId);
+    if (!previous?.itemId || !previous.quantity || previous.quantity <= 0) {
+      notify("الفاتورة المختارة لا تحتوي بيانات كافية لتكرارها.");
+      return;
+    }
+    const factor = state.items.find(item => item.id === previous.itemId)?.unitFactor || 1;
+    const nextSupplier = state.suppliers.find(item => item.id === previous.supplierId);
+    const unitPrice = Math.max(0, (previous.total - previous.extraCosts) / previous.quantity);
+    const dueDate = daysFromNow(nextSupplier?.creditDays ?? state.settings.defaultCreditDays);
+    void run("purchase-draft:save", {
+      number: state.nextNumbers["D-PUR"], supplierId: previous.supplierId, itemId: previous.itemId,
+      date: state.today, quantity: toBase(previous.quantity, factor),
+      unitPriceMinor: Math.round((unitPrice * 100) / factor),
+      extraCostsMinor: toMinor(previous.extraCosts), paidMinor: 0, dueDate,
+    }, "تم إنشاء مسودة جديدة من الفاتورة السابقة؛ راجع الكميات والأسعار قبل الاعتماد.").then(result => {
+      if (result === false || !result.ok) return;
+      const saved = result.data as { id?: string };
+      setEditingDraftId(saved.id || null);
+      setSupplierId(previous.supplierId);
+      setItemId(previous.itemId || "");
+      setPurchaseDate(state.today);
+      setQty(previous.quantity || 0);
+      setPrice(unitPrice);
+      setShipping(previous.extraCosts);
+      setPaid(0);
+      setSupplierInvoiceNumber("");
+      setDueDate(dueDate);
+    });
+  }, [state, run, notify]);
   if (!state) return null;
   const total = qty * price + shipping;
   const landed = total / Math.max(qty, 1);
@@ -125,58 +161,12 @@ function Purchases() {
               : undefined,
         },
       "تم اعتماد فاتورة الشراء وإضافة دفعة للمخزون بالتكلفة الفعلية.",
-    ).then((ok) => {
-      if (ok) setEditingDraftId(null);
-    });
-  };
-  const duplicateAsDraft = () => {
-    const previous = state.purchases.find(
-      (purchase) => purchase.id === repeatPurchaseId,
-    );
-    if (
-      !previous ||
-      !previous.itemId ||
-      !previous.quantity ||
-      previous.quantity <= 0
-    )
-      return notify("الفاتورة المختارة لا تحتوي بيانات كافية لتكرارها.");
-    const previousQuantity = previous.quantity;
-    const nextSupplier = state.suppliers.find(
-      (item) => item.id === previous.supplierId,
-    );
-    const unitPrice = Math.max(
-      0,
-      (previous.total - previous.extraCosts) / previous.quantity,
-    );
-    const payload = {
-      number: state.nextNumbers["D-PUR"],
-      supplierId: previous.supplierId,
-      itemId: previous.itemId,
-      date: state.today,
-      quantity: toBase(previous.quantity, factorOf(previous.itemId)),
-      unitPriceMinor: Math.round((unitPrice * 100) / factorOf(previous.itemId)),
-      extraCostsMinor: toMinor(previous.extraCosts),
-      paidMinor: 0,
-      dueDate: daysFromNow(
-        nextSupplier?.creditDays ?? state.settings.defaultCreditDays,
-      ),
-    };
-    void run("purchase-draft:save", payload,
-      "تم إنشاء مسودة جديدة من الفاتورة السابقة؛ راجع الكميات والأسعار قبل الاعتماد.",
     ).then((result) => {
-      if (!result || !result.ok) return;
-      const saved = result.data as { id?: string };
-      setRepeatPurchaseId("");
-      setEditingDraftId(saved.id || null);
-      setSupplierId(previous.supplierId);
-      setItemId(previous.itemId || "");
-      setPurchaseDate(state.today);
-      setQty(previousQuantity);
-      setPrice(unitPrice);
-      setShipping(previous.extraCosts);
-      setPaid(0);
-      setSupplierInvoiceNumber("");
-      setDueDate(payload.dueDate);
+      if (result) {
+        setEditingDraftId(null);
+        const saved = result.data as { id: string };
+        void invoicePrint.offerPrint({ kind: 'purchase', id: saved.id, number: state.nextNumbers.PUR });
+      }
     });
   };
   const deleteDraft = (draft: PurchaseDraft) => {
@@ -193,6 +183,11 @@ function Purchases() {
       if (ok && editingDraftId === draft.id) setEditingDraftId(null);
     });
   };
+  const selectPurchaseItem = (id: string) => {
+    setItemId(id);
+    const item = state.items.find((candidate) => candidate.id === id);
+    if (item) setPrice(item.unitCost);
+  };
   return (
     <>
       <PurchaseActions editing={!!editingDraftId} busy={busy} onSaveDraft={saveDraft} onConfirm={confirm} />
@@ -200,10 +195,6 @@ function Purchases() {
         state={state}
         onLoad={loadDraft}
         onDelete={deleteDraft}
-        repeatPurchaseId={repeatPurchaseId}
-        setRepeatPurchaseId={setRepeatPurchaseId}
-        onDuplicate={duplicateAsDraft}
-        busy={busy}
       />
       <PurchaseForm
         state={state}
@@ -212,7 +203,7 @@ function Purchases() {
         effectiveSupplierId={effectiveSupplierId}
         setSupplierId={setSupplierId}
         effectiveItemId={effectiveItemId}
-        setItemId={setItemId}
+        onSelectItem={selectPurchaseItem}
         qty={qty} setQty={setQty}
         price={price} setPrice={setPrice}
         shipping={shipping} setShipping={setShipping}
@@ -222,6 +213,7 @@ function Purchases() {
         dueDate={dueDate} setDueDate={setDueDate}
         total={total} landed={landed} supplierCreditDays={supplierCreditDays}
       />
+      {invoicePrint.pending && <InvoicePrintPrompt invoice={invoicePrint.pending} printing={invoicePrint.printing} onPrint={() => { void invoicePrint.print() }} onSkip={invoicePrint.skip} />}
     </>
   );
 }

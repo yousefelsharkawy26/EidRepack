@@ -12,7 +12,7 @@ export const screens = {
   collections: { label: "التحصيل والمديونية", icon: HandCoins, group: "العلاقات المالية", component: lazy(() => import("../features/collections/Page")), shortcut: undefined },
   reminders: { label: "مركز التذكيرات", icon: Bell, group: "العلاقات المالية", component: lazy(() => import("../features/reminders/Page")), shortcut: undefined },
   reports: { label: "التقارير", icon: FileBarChart, group: "الإدارة", component: lazy(() => import("../features/reports/Page")), shortcut: undefined },
-  settings: { label: "الإعدادات والنسخ", icon: Settings, group: "الإدارة", component: lazy(() => import("../features/settings/Page")), shortcut: undefined },
+  settings: { label: "الإعدادات", icon: Settings, group: "الإدارة", component: lazy(() => import("../features/settings/Page")), shortcut: undefined },
 } as const;
 
 export type Screen = keyof typeof screens;

@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, dialog, session, protocol, shell } = require('electron')
+const fs = require('node:fs')
 const path = require('node:path')
 const Database = require('better-sqlite3')
 const { registerIpcHandlers } = require('./services/ipc.cjs')
@@ -12,13 +13,22 @@ const { createWindow } = require('./system/window.cjs')
 const { registerBackupHandlers } = require('./system/backup.cjs')
 const { registerWhatsAppHandler } = require('./system/whatsapp.cjs')
 const { registerPrintHandler } = require('./system/print.cjs')
+const { registerDeveloperTools } = require('./system/developer-tools.cjs')
+const { createSystemLogs } = require('./system/system-logs.cjs')
+const { createDemoDatabase } = require('./system/demo-data.cjs')
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }])
 
 let database
 let security
+let demoMode = false
+const systemLogs = createSystemLogs()
+systemLogs.install()
 let legacyImport = { status: 'not_needed' }
-const dbPath = () => path.join(app.getPath('userData'), 'repack-manager.db')
+const productionDbPath = () => path.join(app.getPath('userData'), 'repack-manager.db')
+const demoDbPath = () => path.join(app.getPath('userData'), 'repack-manager-demo.db')
+const dataModePath = () => path.join(app.getPath('userData'), 'data-mode')
+const dbPath = () => demoMode ? demoDbPath() : productionDbPath()
 const appFilePath = path.join(__dirname, '..', 'dist', 'index.html')
 const assertTrustedFrame = createTrustedFrameGuard({
   app, getViteOrigin, isViteDevelopmentDocument: isViteDevelopmentDocument
@@ -42,8 +52,49 @@ function initDatabase() {
   security = createSecurity(database)
 }
 
+function persistDataMode(mode) {
+  const target = dataModePath()
+  const temporary = `${target}.tmp`
+  fs.writeFileSync(temporary, mode, { mode: 0o600 })
+  fs.renameSync(temporary, target)
+}
+
+async function switchDataMode(mode, ownerId) {
+  if (mode === 'demo' && !fs.existsSync(demoDbPath())) {
+    await createDemoDatabase({
+      sourceDatabase: database,
+      demoPath: demoDbPath(),
+      ownerId,
+      Database,
+      configureDatabase,
+      applyMigrations,
+      ensureAppStateTable
+    })
+  }
+  const previousMode = demoMode
+  if ((mode === 'demo') === previousMode) return { mode }
+  if (database?.open) database.close()
+  try {
+    demoMode = mode === 'demo'
+    persistDataMode(demoMode ? 'demo' : 'production')
+    initDatabase()
+  } catch (error) {
+    demoMode = previousMode
+    if (database?.open) database.close()
+    try {
+      persistDataMode(demoMode ? 'demo' : 'production')
+      initDatabase()
+    } catch (restoreError) {
+      console.error('Could not restore previous database after mode switch:', restoreError)
+    }
+    throw error
+  }
+  return { mode }
+}
+
 app.whenReady().then(async () => {
   registerAppProtocol(protocol, path.dirname(appFilePath))
+  demoMode = fs.existsSync(dataModePath()) && fs.readFileSync(dataModePath(), 'utf8').trim() === 'demo'
   initDatabase()
   legacyImport = await runLegacyImportIfNeeded(database, app)
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => callback({
@@ -67,12 +118,13 @@ app.whenReady().then(async () => {
   ipcMain.handle('auth:status', event => {
     assertTrustedFrame(event)
     const needsBootstrap = database.prepare('SELECT COUNT(*) AS n FROM users').get().n === 0
-    return { needsBootstrap, legacyImport }
+    return { needsBootstrap, legacyImport, dataMode: demoMode ? 'demo' : 'production' }
   })
   ipcMain.handle('security:elevate', (event, payload) => { assertTrustedFrame(event); return security.elevate(event, payload) })
   registerBackupHandlers(ipcMain, { assertTrustedFrame, dialog, getDatabase: () => database, dbPath, initDatabase })
+  registerDeveloperTools(ipcMain, { assertTrustedFrame, getContext, getDatabase: () => database, dbPath, BrowserWindow, logs: systemLogs, getDataMode: () => demoMode ? 'demo' : 'production', switchDataMode })
   registerWhatsAppHandler(ipcMain, { assertTrustedFrame, shell })
-  registerPrintHandler(ipcMain, { assertTrustedFrame, BrowserWindow })
+  registerPrintHandler(ipcMain, { assertTrustedFrame, BrowserWindow, dialog })
   const openWindow = () => createWindow({
     app, BrowserWindow, getViteOrigin, isViteDevelopmentDocument: isViteDevelopmentDocument,
     preloadPath: path.join(__dirname, 'preload.cjs')

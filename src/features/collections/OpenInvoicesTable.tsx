@@ -1,6 +1,7 @@
 import { Ban, Clock3, FileBarChart, HandCoins } from "lucide-react";
 import { saleStatus, type AppState, type Sale } from "../../lib/domain";
 import StatusBadge from "../../shared/ui/StatusBadge";
+import { PaginationBar, usePagination } from "../../shared/ui/Pagination";
 
 interface Props {
   state: AppState; open: Sale[]; isOwner: boolean; busy: boolean;
@@ -10,9 +11,10 @@ interface Props {
 }
 
 export default function OpenInvoicesTable({ state, open, isOwner, busy, onPrint, onCollect, onPromise, onReturn, onWriteOff }: Props) {
+  const { pageItems, pagination } = usePagination(open);
   return <section className="card card-flush"><table>
     <thead><tr><th>الفاتورة</th><th>العميل</th><th>تاريخ الاستحقاق</th><th>المتبقي</th><th>الحالة</th><th /></tr></thead>
-    <tbody>{open.map((sale) => {
+    <tbody>{pageItems.map((sale) => {
       const customer = state.customers.find((entry) => entry.id === sale.customerId);
       const status = saleStatus(sale);
       return <tr key={sale.id}><td className="name-cell"><b>{sale.number}</b><small>تاريخ الفاتورة: {sale.date}</small></td>
@@ -25,5 +27,5 @@ export default function OpenInvoicesTable({ state, open, isOwner, busy, onPrint,
           {isOwner && <button className="danger" disabled={busy} onClick={() => onWriteOff(sale)}><Ban size={14} /> شطب</button>}
         </td></tr>;
     })}</tbody>
-  </table></section>;
+  </table><PaginationBar state={pagination}/></section>;
 }

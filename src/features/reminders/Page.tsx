@@ -6,6 +6,7 @@ import Metric from "../../components/Metric";
 import { statusClass, statusLabel } from "../../lib/helpers";
 import StatusBadge from "../../shared/ui/StatusBadge";
 import ReminderConfig from "./ReminderConfig";
+import { PaginationBar, usePagination } from "../../shared/ui/Pagination";
 
 function Reminders() {
   const { state } = useApp();
@@ -16,6 +17,7 @@ function Reminders() {
 function RemindersContent() {
   const { state: snapshot, run, busy, notify } = useApp();
   const state = snapshot!;
+  const { pageItems, pagination } = usePagination(state.reminders);
   const [showConfig, setShowConfig] = useState(false);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState<{
     reminderId: string;
@@ -171,7 +173,7 @@ function RemindersContent() {
             </tr>
           </thead>
           <tbody>
-            {state.reminders.map((reminder) => {
+            {pageItems.map((reminder) => {
               const sale = state.sales.find(
                 (sale) => sale.id === reminder.saleId,
               );
@@ -228,6 +230,7 @@ function RemindersContent() {
             })}
           </tbody>
         </table>
+        <PaginationBar state={pagination}/>
       </section>
       <div className="split panel-spaced">
         <section className="card">

@@ -1,5 +1,6 @@
 import type { Item, UserRole } from "../../lib/domain";
 import { money, quantity } from "../../lib/domain";
+import { PaginationBar, usePagination } from "../../shared/ui/Pagination";
 
 interface Props {
   items: Item[];
@@ -10,10 +11,11 @@ interface Props {
 }
 
 export default function StockTable({ items, role, onAdjust, onEdit, onToggleActive }: Props) {
+  const { pageItems, pagination } = usePagination(items);
   return <section className="card card-flush">
     <table>
       <thead><tr><th>الصنف</th><th>النوع</th><th>الرصيد الحالي</th><th>الحد الأدنى</th><th>متوسط التكلفة</th><th>قيمة المخزون</th><th>الحالة</th><th>إدارة</th></tr></thead>
-      <tbody>{items.map((item) => <tr key={item.id} className={item.active === false ? "inactive-item" : ""}>
+      <tbody>{pageItems.map((item) => <tr key={item.id} className={item.active === false ? "inactive-item" : ""}>
         <td className="name-cell"><b>{item.name}</b><small>{item.sku} · {item.baseUnit}</small></td>
         <td>{item.type === "raw" ? "مادة خام" : item.type === "packaging" ? "تغليف" : "منتج جاهز"}</td>
         <td>{quantity(item.stock, item.baseUnit)}</td><td>{quantity(item.minStock, item.baseUnit)}</td>
@@ -26,5 +28,6 @@ export default function StockTable({ items, role, onAdjust, onEdit, onToggleActi
         </td>
       </tr>)}</tbody>
     </table>
+    <PaginationBar state={pagination} />
   </section>;
 }

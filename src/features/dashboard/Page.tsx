@@ -10,7 +10,7 @@ function Dashboard() {
   const canSeeProfit = currentUser.role === "owner";
   const activeSales = state.sales.filter(sale => sale.status !== 'cancelled')
   const overdue = activeSales.filter(s => saleStatus(s) === 'overdue').reduce((sum, sale) => sum + sale.total - sale.paid, 0)
-  const receivables = state.customers.reduce((sum, customer) => sum + customer.balance, 0)
+  const overdueCount = activeSales.filter(sale => saleStatus(sale) === 'overdue').length
   const monthKey = today().slice(0, 7)
   const monthSalesList = activeSales.filter(sale => sale.date.slice(0, 7) === monthKey)
   const monthSales = monthSalesList.reduce((sum, sale) => sum + sale.total, 0)
@@ -34,7 +34,7 @@ function Dashboard() {
     <div className="metrics">
       <Metric title="مبيعات هذا الشهر" value={money(monthSales)} note={'عدد الفواتير: ' + quantity(monthSalesList.length, 'فاتورة')} icon={<ArrowUpRight size={18}/>} />
       {canSeeProfit && <Metric title="ربح هذا الشهر" value={money(grossProfit)} note={'هامش إجمالي ' + margin.toFixed(1) + '٪'} icon={<WalletCards size={18}/>} tone="orange"/>}
-      <Metric title="ذمم العملاء" value={money(receivables)} note={'منها ' + money(overdue) + ' متأخرة'} icon={<CreditCard size={18}/>} tone="red"/>
+      <Metric title="متأخرات العملاء" value={money(overdue)} note={quantity(overdueCount, 'فاتورة متأخرة')} icon={<CreditCard size={18}/>} tone="red"/>
       <Metric title="تنبيهات المخزون" value={quantity(lowStock.length, 'أصناف')} note="تحتاج إلى إعادة طلب" icon={<AlertTriangle size={18}/>} tone="orange"/>
     </div>
     <div className="dashboard-grid">
@@ -52,7 +52,7 @@ function Dashboard() {
       </section>
     </div>
     <div className="split">
-      <section className="card"><div className="card-title"><h3>آخر النشاطات</h3></div><div className="activity">{state.activity.slice(0, 8).map(activity => <Activity key={activity.id} {...activity}/>)}</div></section>
+      <section className="card"><div className="card-title"><h3>آخر النشاطات</h3></div><div className="activity">{state.activity.slice(0, 5).map(activity => <Activity key={activity.id} {...activity}/>)}</div></section>
       <section className="card"><div className="card-title"><h3>تحتاج إلى انتباهك</h3><button className="link" onClick={() => onNavigate('reminders')}>عرض الكل</button></div>
         {dueReminders.length > 0 && <div className="notice"><b>{quantity(dueReminders.length, 'تذكيرات مستحقة')}</b><span>{[...new Set(dueReminders.map(reminder => state.customers.find(customer => customer.id === reminder.customerId)?.name).filter(Boolean))].join('، ')}</span></div>}
         {lowStock.map(item => <div className="notice" key={item.id}><b>مخزون {item.name} {item.stock <= 0 ? 'نفد' : 'يقترب من الحد'}</b><span>المتبقي {quantity(item.stock, item.baseUnit)} · الحد الأدنى {quantity(item.minStock, item.baseUnit)}</span></div>)}

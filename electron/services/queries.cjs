@@ -49,7 +49,8 @@ function nextNumber(db, prefix, table, where = '') {
 function buildSnapshot(db, ctx) {
   const items = all(db, `SELECT i.*, u.name AS legacy_unit_name,
       COALESCE((SELECT SUM(l.qty_remaining_base) FROM stock_lots l WHERE l.item_id=i.id AND l.is_active=1),0) AS stock_base,
-      COALESCE((SELECT SUM(l.cost_remaining_minor) FROM stock_lots l WHERE l.item_id=i.id AND l.is_active=1),0) AS cost_base
+      COALESCE((SELECT SUM(l.cost_remaining_minor) FROM stock_lots l WHERE l.item_id=i.id AND l.is_active=1),0) AS cost_base,
+      EXISTS(SELECT 1 FROM stock_movements m WHERE m.item_id=i.id) AS has_stock_movements
     FROM items i LEFT JOIN units u ON u.id = i.legacy_unit_id ORDER BY i.created_at, i.rowid`)
   const recipeLines = all(db, 'SELECT id,finished_item_id,component_item_id,qty_per_unit_base,line_type FROM item_recipe_lines WHERE is_active=1')
 
