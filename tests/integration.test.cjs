@@ -3,12 +3,22 @@
 // the real security layer, so regressions in the wiring are caught here.
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const { execFileSync } = require('node:child_process')
+const Module = require('node:module')
+const path = require('node:path')
 const { randomUUID } = require('node:crypto')
 const Database = require('better-sqlite3')
 const { applyMigrations, configureDatabase } = require('../electron/migrations/runner.cjs')
 const { registerIpcHandlers } = require('../electron/services/ipc.cjs')
 const { createSecurity } = require('../electron/security.cjs')
 const operations = require('../electron/services/operations.cjs')
+
+const baselineQueriesPath = path.resolve(__dirname, '../electron/services/queries.cjs')
+const baselineQueriesModule = new Module(baselineQueriesPath, module)
+baselineQueriesModule.filename = baselineQueriesPath
+baselineQueriesModule.paths = Module._nodeModulePaths(path.dirname(baselineQueriesPath))
+baselineQueriesModule._compile(execFileSync('git', ['show', 'phase-0-done:electron/services/queries.cjs'], { encoding: 'utf8' }), baselineQueriesPath)
+const { buildSnapshot: buildPhase0Snapshot } = baselineQueriesModule.exports
 
 const NOW = '2026-01-05'
 
@@ -78,6 +88,8 @@ test('renderer full cycle over IPC keeps books balanced', () => {
   })
 
   let snap = snapshot()
+  const phase0Snap = buildPhase0Snapshot(harness.db, { role: 'owner' })
+  assert.deepEqual({ ...snap, generatedAt: '<time>' }, { ...phase0Snap, generatedAt: '<time>' }, 'snapshot shape and values stay identical to Phase 0')
   assert.equal(snap.items.find(item => item.id === ids.fin).stockBase, 100)
   assert.equal(snap.items.find(item => item.id === ids.raw).stockBase, 50000)
   assert.equal(snap.nextNumbers.INV, 'INV-' + new Date().getFullYear() + '-0001')

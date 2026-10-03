@@ -2,11 +2,8 @@
 // relational schema. All money stays in integer piasters (…Minor) and all
 // quantities in integer base units (…Base); the renderer converts for display.
 const { unitByLegacyId, unitInfo } = require('../units.cjs')
-
-function localDateString(date) {
-  return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0')
-}
-
+const { localDateString } = require('../core/dates.cjs')
+const { snapshotContributors } = require('../modules/index.cjs')
 function all(db, sql, params = []) { return db.prepare(sql).all(...params) }
 function get(db, sql, params = []) { return db.prepare(sql).get(...params) }
 
@@ -99,150 +96,8 @@ function buildSnapshot(db, ctx) {
   const users = all(db, 'SELECT id,username,display_name,role,is_active,created_at FROM users ORDER BY created_at, rowid')
   const userNames = new Map(users.map(user => [user.id, user.display_name]))
 
-  return {
-    generatedAt: new Date().toISOString(),
-    today: localDateString(new Date()),
-    settings: readSettings(db),
-    users,
-    items: items.map(item => ({
-      id: item.id,
-      sku: item.sku,
-      name: item.name,
-      type: item.type,
-      unit: unitFor(item),
-      stockBase: item.stock_base,
-      minStockBase: item.min_stock_base,
-      // Weighted average cost per BASE unit, from live lots.
-      unitCostBaseMinor: item.stock_base > 0 ? Math.round(item.cost_base / item.stock_base) : 0,
-      salePriceBaseMinor: item.default_sale_price_minor,
-      isActive: Boolean(item.is_active),
-      recipe: recipeLines
-        .filter(line => line.finished_item_id === item.id)
-        .map(line => ({ itemId: line.component_item_id, qtyPerUnitBase: line.qty_per_unit_base, kind: line.line_type }))
-    })),
-    customers: customers.map(row => ({
-      id: row.id, name: row.name, phone: row.phone, whatsapp: row.whatsapp,
-      creditLimitMinor: row.credit_limit_minor, creditDays: row.credit_days,
-      isBlocked: Boolean(row.is_blocked), blockReason: row.block_reason,
-      notes: row.notes, isActive: Boolean(row.is_active), balanceMinor: row.balance_minor
-    })),
-    customerOpenings, customerAdjustments,
-    suppliers: suppliers.map(row => ({
-      id: row.id, name: row.name, phone: row.phone, whatsapp: row.whatsapp,
-      address: row.address, notes: row.notes, creditDays: row.default_credit_days,
-      isActive: Boolean(row.is_active), balanceMinor: row.balance_minor
-    })),
-    supplierOpenings,
-    sales: sales.map(sale => ({
-      id: sale.id, number: sale.number, customerId: sale.customer_id, date: sale.date,
-      dueDate: sale.due_date, status: sale.status,
-      totalMinor: sale.total_minor, paidMinor: sale.paid_amount_minor,
-      creditOverrideBy: sale.credit_override_by ? userNames.get(sale.credit_override_by) || sale.credit_override_by : null,
-      creditOverrideReason: sale.credit_override_reason,
-      notes: sale.notes,
-      lines: (linesBySale.get(sale.id) || []).map(line => ({
-        id: line.id, itemId: line.item_id, qtyBase: line.qty_base,
-        unitPriceBaseMinor: line.unit_price_minor, unitCostBaseMinor: line.unit_cost_minor,
-        lineTotalMinor: line.line_total_minor, cogsTotalMinor: line.cogs_total_minor
-      }))
-    })),
-    purchases: purchases.map(purchase => {
-      const line = lineByPurchase.get(purchase.id)
-      return {
-        id: purchase.id, number: purchase.number, supplierId: purchase.supplier_id, date: purchase.date,
-        dueDate: purchase.due_date, status: purchase.status,
-        totalMinor: purchase.total_minor, paidMinor: purchase.paid_amount_minor,
-        extraCostsMinor: purchase.extra_costs_total_minor,
-        supplierInvoiceNumber: purchase.supplier_invoice_number,
-        itemId: line?.item_id || null, qtyBase: line?.qty_base || 0,
-        landedCostTotalMinor: line?.landed_cost_total_minor ?? purchase.total_minor,
-        lotId: lotByPurchase.get(purchase.id) || null
-      }
-    }),
-    purchaseDrafts: all(db, 'SELECT * FROM purchase_drafts ORDER BY created_at DESC').map(draft => ({
-      id: draft.id, number: draft.number, supplierId: draft.supplier_id, itemId: draft.item_id,
-      date: draft.date, qtyBase: draft.quantity_base, unitPriceBaseMinor: draft.unit_price_minor,
-      extraCostsMinor: draft.extra_costs_minor, paidMinor: draft.paid_amount_minor,
-      supplierInvoiceNumber: draft.supplier_invoice_number, dueDate: draft.due_date
-    })),
-    packings: all(db, 'SELECT * FROM packing_orders ORDER BY date DESC, rowid DESC').map(order => ({
-      id: order.id, number: order.number, date: order.date, itemId: order.finished_item_id,
-      plannedUnits: order.planned_units, producedUnits: order.produced_units,
-      wasteQtyBase: order.waste_qty_base, unitCostMinor: order.unit_cost_minor,
-      status: order.status, notes: order.notes
-    })),
-    lots: all(db, 'SELECT * FROM stock_lots ORDER BY received_at, rowid').map(lot => ({
-      id: lot.id, itemId: lot.item_id, code: lot.lot_code,
-      qtyBase: lot.qty_remaining_base, qtyInitialBase: lot.qty_initial_base,
-      costTotalMinor: lot.cost_total_minor, costRemainingMinor: lot.cost_remaining_minor,
-      receivedAt: lot.received_at, expiryDate: lot.expiry_date,
-      source: lot.source_type, isActive: Boolean(lot.is_active)
-    })),
-    reminders: all(db, 'SELECT * FROM reminders ORDER BY scheduled_for, rowid').map(row => ({
-      id: row.id, saleId: row.sales_order_id, customerId: row.customer_id,
-      ruleId: row.rule_id, templateId: row.template_id, scheduledFor: row.scheduled_for,
-      status: row.status, sentAt: row.sent_at, stage: row.stage
-    })),
-    reminderRules: all(db, 'SELECT * FROM reminder_rules ORDER BY offset_days').map(row => ({
-      id: row.id, name: row.name, offsetDays: row.offset_days, stage: row.name,
-      templateId: row.template_id, isActive: Boolean(row.is_active), customerId: row.customer_id
-    })),
-    messageTemplates: all(db, 'SELECT * FROM message_templates').map(row => ({
-      id: row.id, name: row.name, stage: row.stage, body: row.body, channel: row.channel
-    })),
-    promises: all(db, 'SELECT * FROM promises_to_pay ORDER BY created_at DESC').map(row => ({
-      id: row.id, saleId: row.sales_order_id, customerId: row.customer_id,
-      promisedDate: row.promised_date, amountMinor: row.amount_minor,
-      status: row.status, notes: row.notes
-    })),
-    payments: payments.map(row => ({
-      id: row.id, partyType: row.party_type,
-      customerId: row.customer_id, supplierId: row.supplier_id,
-      direction: row.direction, amountMinor: row.amount_minor,
-      method: row.method, date: row.date, reference: row.reference, notes: row.notes,
-      isReversed: Boolean(row.reversed_of_id),
-      allocations: (allocationsByPayment.get(row.id) || []).map(a => ({
-        docType: a.doc_type, saleId: a.sales_order_id, purchaseId: a.purchase_invoice_id,
-        amountMinor: a.amount_minor, isInitial: Boolean(a.is_initial)
-      }))
-    })),
-    refunds: all(db, 'SELECT * FROM customer_refunds ORDER BY date DESC, rowid DESC').map(row => ({
-      id: row.id, customerId: row.customer_id, saleId: row.sales_order_id,
-      amountMinor: row.amount_minor, method: row.method, date: row.date, notes: row.notes
-    })),
-    returns: returns.map(row => ({
-      id: row.id, number: row.number, type: row.return_type,
-      saleId: row.sales_order_id, purchaseId: row.purchase_invoice_id,
-      date: row.date, reason: row.reason,
-      lines: (linesByReturn.get(row.id) || []).map(line => ({
-        itemId: line.item_id, qtyBase: line.qty_base, valueMinor: line.value_minor, costMinor: line.cost_minor,
-        originalSalesLineId: line.original_sales_line_id
-      }))
-    })),
-    stockMovements: all(db, 'SELECT * FROM stock_movements ORDER BY created_at DESC, rowid DESC LIMIT 250').map(row => ({
-      id: row.id, itemId: row.item_id, lotId: row.lot_id, type: row.movement_type,
-      qtyBase: row.qty_base, balanceAfterBase: row.balance_after_base, costMinor: row.cost_minor,
-      refType: row.ref_type, refId: row.ref_id, createdAt: row.created_at, notes: row.notes,
-      createdBy: row.created_by ? userNames.get(row.created_by) || null : null
-    })),
-    messageLog: all(db, 'SELECT * FROM message_log ORDER BY created_at DESC, rowid DESC LIMIT 100').map(row => ({
-      id: row.id, reminderId: row.reminder_id, customerId: row.customer_id,
-      toPhone: row.to_phone, body: row.rendered_body, status: row.status, createdAt: row.created_at
-    })),
-    auditLog: ctx.role === 'owner' ? auditRows.map(row => ({
-      id: row.id, at: row.created_at, userId: row.user_id,
-      userName: row.user_id ? userNames.get(row.user_id) || null : null,
-      action: row.action, entity: row.entity, entityId: row.entity_id
-    })) : [],
-    nextNumbers: {
-      INV: nextNumber(db, 'INV', 'sales_orders'),
-      PUR: nextNumber(db, 'PUR', 'purchase_invoices'),
-      'D-PUR': nextNumber(db, 'D-PUR', 'purchase_drafts'),
-      PCK: nextNumber(db, 'PCK', 'packing_orders'),
-      RET: nextNumber(db, 'RET', 'returns', "WHERE return_type='sales'"),
-      PRT: nextNumber(db, 'PRT', 'returns', "WHERE return_type='purchase'")
-    }
-  }
+  const context = { db, ctx, localDateString, readSettings, unitFor, nextNumber, all, get, items, recipeLines, customers, customerOpenings, customerAdjustments, suppliers, supplierOpenings, sales, salesLines, linesBySale, purchases, purchaseLines, lineByPurchase, purchaseLots, lotByPurchase, returns, returnLines, linesByReturn, payments, allocations, allocationsByPayment, auditRows, users, userNames }
+  return Object.assign({}, ...snapshotContributors.map(contributor => contributor(context)))
 }
 
 module.exports = { buildSnapshot, localDateString, readSettings }

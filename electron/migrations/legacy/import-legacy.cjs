@@ -1,8 +1,9 @@
+// One-time legacy import. Safe to delete after all installs migrated.
 const crypto = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
 const Database = require('better-sqlite3')
-const { applyMigrations, configureDatabase } = require('./runner.cjs')
+const { applyMigrations, configureDatabase } = require('../runner.cjs')
 
 const MIGRATION_KEY = 'legacy-app-state-v1'
 const CANONICAL_UNITS = {
@@ -956,7 +957,7 @@ function writeReport(reportPath, report) {
 
 async function main(argv) {
   if (argv.length < 2 || argv.length > 3) {
-    throw new MigrationError('الاستخدام: node electron/migrations/import-legacy.cjs <user-db.sqlite> <new-copy.sqlite> [reconciliation.json]', 'USAGE')
+    throw new MigrationError('الاستخدام: node electron/migrations/legacy/import-legacy.cjs <user-db.sqlite> <new-copy.sqlite> [reconciliation.json]', 'USAGE')
   }
   const [sourcePath, copyPath, reportPath] = argv
   try {
