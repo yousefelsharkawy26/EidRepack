@@ -3,7 +3,7 @@
 // the real security layer, so regressions in the wiring are caught here.
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { execFileSync } = require('node:child_process')
+const fs = require('node:fs')
 const Module = require('node:module')
 const path = require('node:path')
 const { randomUUID } = require('node:crypto')
@@ -17,7 +17,8 @@ const baselineQueriesPath = path.resolve(__dirname, '../electron/services/querie
 const baselineQueriesModule = new Module(baselineQueriesPath, module)
 baselineQueriesModule.filename = baselineQueriesPath
 baselineQueriesModule.paths = Module._nodeModulePaths(path.dirname(baselineQueriesPath))
-baselineQueriesModule._compile(execFileSync('git', ['show', 'phase-0-done:electron/services/queries.cjs'], { encoding: 'utf8' }), baselineQueriesPath)
+const baselineQueriesSource = fs.readFileSync(path.resolve(__dirname, 'fixtures/phase-0-queries.cjs'), 'utf8')
+baselineQueriesModule._compile(baselineQueriesSource, baselineQueriesPath)
 const { buildSnapshot: buildPhase0Snapshot } = baselineQueriesModule.exports
 
 const NOW = '2026-01-05'
