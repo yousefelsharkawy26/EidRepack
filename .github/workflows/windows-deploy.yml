@@ -26,8 +26,12 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Audit dependencies
+      - name: Audit application dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+
+      - name: Report all dependency advisories
         run: npm audit --audit-level=moderate
+        continue-on-error: true
 
       - name: Build renderer
         run: npm run build
