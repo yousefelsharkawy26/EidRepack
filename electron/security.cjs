@@ -52,8 +52,15 @@ function createSecurity(database) {
     return { userId: user.id, role: user.role, elevation: session.elevation || null }
   }
   function session(event) {
-    const ctx = context(event)
-    return safeUser(userById(ctx.userId))
+    const current = sessions.get(event.sender.id)
+    if (!current) return null
+    const user = userById(current.userId)
+    if (!user?.is_active) {
+      sessions.delete(event.sender.id)
+      return null
+    }
+    if (current.elevation && current.elevation.expiresAt <= Date.now()) current.elevation = null
+    return safeUser(user)
   }
   function logout(event) { sessions.delete(event.sender.id); return true }
   function invalidate(userId) {

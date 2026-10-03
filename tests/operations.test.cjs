@@ -85,6 +85,27 @@ test('confirmPurchase creates lot, movement, payment and cash entry atomically',
   db.close()
 })
 
+test('confirmPurchase consumes an edited draft using the confirmation data', () => {
+  const db = freshDatabase()
+  seedFixtures(db)
+  const draft = operations.savePurchaseDraft(db, {
+    supplierId: 'sup-1', itemId: 'raw-sugar', quantity: 100,
+    unitPriceMinor: 400, extraCostsMinor: 0, paidMinor: 0,
+    number: 'D-PUR-1', date: '2026-01-01'
+  }, ownerCtx)
+
+  const purchase = operations.confirmPurchase(db, {
+    draftId: draft.id, supplierId: 'sup-1', itemId: 'pack-bag', quantity: 25,
+    subtotalMinor: 12500, lineTotalMinor: 12500, extraCostsMinor: 0,
+    totalMinor: 12500, paidMinor: 0, number: 'PUR-1', date: '2026-01-01'
+  }, ownerCtx)
+
+  assert.equal(stockOf(db, 'pack-bag'), 25)
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM purchase_drafts WHERE id=?').get(draft.id).n, 0)
+  assert.ok(db.prepare('SELECT 1 FROM purchase_invoices WHERE id=?').get(purchase.id))
+  db.close()
+})
+
 test('confirmPacking consumes inputs FIFO and costs output per PRD example', () => {
   const db = freshDatabase()
   seedFixtures(db)

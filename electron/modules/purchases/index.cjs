@@ -5,7 +5,8 @@ const { unitInfo } = require('../../units.cjs')
 function confirmPurchase(db, input, options = {}) {
   const result = atomic(db, options, control => {
     const draft = input.draftId ? requiredRow(one(db, 'SELECT * FROM purchase_drafts WHERE id=?', [input.draftId]), 'Purchase draft not found') : null
-    if (draft && (draft.supplier_id !== input.supplierId || draft.item_id !== input.itemId || draft.quantity_base !== input.quantity)) throw new Error('Purchase draft does not match confirmation data')
+    // The confirmation payload is authoritative: loaded drafts remain editable
+    // until confirmed, and the draft is consumed atomically with the invoice.
     const supplier = requiredRow(one(db, 'SELECT id FROM suppliers WHERE id=?', [input.supplierId]), 'Supplier not found')
     const item = requiredRow(one(db, 'SELECT id FROM items WHERE id=?', [input.itemId]), 'Item not found')
     assertPositiveInt(input.quantity, 'quantity'); assertNonnegativeInt(input.totalMinor, 'totalMinor'); assertNonnegativeInt(input.paidMinor || 0, 'paidMinor')

@@ -155,6 +155,7 @@ test('IPC layer enforces authentication and role permissions', () => {
   const harness = makeHarness()
   const { security, event, invoke } = harness
   // No session: everything is rejected.
+  assert.equal(security.session(event), null)
   assert.throws(() => invoke('query:run', { name: 'query:snapshot' }), /Authentication required/)
   assert.throws(() => invoke('command:run', { name: 'settings:save', payload: { key: 'company_name', value: 'x', clientRequestId: randomUUID() } }), /Authentication required/)
 

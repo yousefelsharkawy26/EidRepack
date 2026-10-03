@@ -2,6 +2,12 @@
 // Phase B: no persistence, no credentials, no seed data here — the SQLite
 // backend is the single source of truth and this module only shapes its
 // snapshot for display (EGP floats and display units).
+import { money } from "../shared/lib/money";
+import { quantity } from "../shared/lib/units";
+import { today } from "../shared/lib/dates";
+export { money } from "../shared/lib/money";
+export { quantity } from "../shared/lib/units";
+export { addDays, daysFromNow, localDateString, today } from "../shared/lib/dates";
 
 export type ItemType = 'raw' | 'packaging' | 'finished'
 export type UserRole = 'owner' | 'sales' | 'warehouse' | 'purchasing'
@@ -313,31 +319,6 @@ export interface AppState {
   settings: AppSettings
   nextNumbers: Record<'INV' | 'PUR' | 'D-PUR' | 'PCK' | 'RET' | 'PRT', string>
   today: string
-}
-
-export const money = (amount: number) =>
-  new Intl.NumberFormat('ar-EG', { style: 'currency', currency: 'EGP', maximumFractionDigits: 2 }).format(amount)
-
-export const quantity = (amount: number, unit = '') =>
-  new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(amount) + (unit ? ' ' + unit : '')
-
-// Local (device timezone) calendar dates — never UTC, so documents created after
-// midnight in Egypt (UTC+2/+3) carry the correct local day.
-export const localDateString = (date: Date) =>
-  date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0')
-
-export const today = () => localDateString(new Date())
-
-export const daysFromNow = (days: number) => {
-  const date = new Date()
-  date.setDate(date.getDate() + days)
-  return localDateString(date)
-}
-
-export const addDays = (isoDate: string, days: number) => {
-  const date = new Date(isoDate + 'T12:00:00')
-  date.setDate(date.getDate() + days)
-  return localDateString(date)
 }
 
 // Relative Arabic label for an ISO timestamp ("الآن"، "منذ ٣ ساعات"…).
